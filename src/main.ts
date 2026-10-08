@@ -92,7 +92,7 @@ function render(dt){tt+=dt;
   r.sh.position.x=r.g.position.x;r.sh.position.z=r.g.position.z});
  const b=s.ball,bx=(b.x-W/2)*K,bz=(b.y-H/2)*K;ballM.position.set(bx,.55+b.h*K,bz);ballM.rotation.z-=b.vx*dt*K/.55;ballM.rotation.x+=b.vy*dt*K/.55;ballSh.position.set(bx,.04,bz);ballSh.scale.setScalar(.6/(1+b.h*.02));
  const mg=rigs[me].g.position;mark.position.set(mg.x,5+Math.sin(tt*5)*.25,mg.z);tagsUpdate();
- const k=Math.max(1,1.9/cam.aspect);cx+=(clamp(bx,-30,30)-cx)*Math.min(1,dt*3);cz+=(bz*.5-cz)*Math.min(1,dt*3);
+ const k=1.2*Math.max(1,1.9/cam.aspect);cx+=(clamp(bx,-30,30)-cx)*Math.min(1,dt*3);cz+=(bz*.5-cz)*Math.min(1,dt*3);
  cam.position.set(cx,30*k,cz+26*k);cam.lookAt(cx,0,cz);ren.render(scene,cam)}
 function resize(){ren.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',resize);resize();
 const mmc=$('mm'),mx_=mmc.getContext('2d');
@@ -128,11 +128,12 @@ function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own
 const portrait=()=>matchMedia('(orientation:portrait) and (pointer:coarse)').matches;
 function lockLand(){const e=document.documentElement;try{(e.requestFullscreen?e.requestFullscreen():Promise.reject()).then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}catch(x){}}
 let shown='',last=performance.now(),acc=0,loaded=false;
-let curScreen='',padUsed=false,padPrev:any={},padT=0;
+let curScreen='',padUsed=false,padPrev:any={},padT=0,padKeep='';
 // ===== GAMEPAD IN MENUS: d-pad / left stick moves the highlight, A (cross) selects, B (circle) goes back, Start resumes =====
 const padEls=()=>[...document.querySelectorAll('#menu button:not([disabled]),#menu input')].filter((e:any)=>e.offsetParent!==null);
 function padFocus(e:any){document.querySelectorAll('#menu .pf').forEach((x:any)=>x.classList.remove('pf'));e.classList.add('pf');e.scrollIntoView({block:'nearest',inline:'nearest'})}
 function padNav(dir:string){const els:any[]=padEls();if(!els.length)return;const cur:any=els.find(e=>e.classList.contains('pf'));if(!cur){padFocus(els[0]);return}
+ const sp:any=cur.closest&&cur.closest('.sp');if(sp&&(dir==='l'||dir==='r')){const a:any=sp.querySelector('.ar[data-d="'+(dir==='l'?-1:1)+'"]');if(a&&!a.disabled){a.click();return}}
  const r=cur.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let best:any=null,bs=1e9;
  els.forEach(e=>{if(e===cur)return;const q=e.getBoundingClientRect(),dx=q.left+q.width/2-cx,dy=q.top+q.height/2-cy,h=dir==='r'||dir==='l';
   if(!(dir==='r'?dx>4:dir==='l'?dx<-4:dir==='d'?dy>4:dy<-4))return;const sc=(h?Math.abs(dx):Math.abs(dy))+(h?Math.abs(dy):Math.abs(dx))*2.5;if(sc<bs){bs=sc;best=e}});
@@ -148,7 +149,7 @@ function padPoll(now:number){const g:any=navigator.getGamepads?[...navigator.get
  if(st.b&&!padPrev.b){const t:any=document.querySelector('#menu [data-to]')||document.getElementById('rsm')||document.getElementById('lv');if(t)t.click()}
  if(st.s&&!padPrev.s&&curScreen==='pause')$('rsm').click();
  padPrev=st;
- if(padUsed&&!document.querySelector('#menu .pf')){const e:any[]=padEls();const f=e.find(x=>x.classList.contains('go'))||e[0];if(f)padFocus(f)}}
+ if(padUsed&&!document.querySelector('#menu .pf')){const e:any[]=padEls();let f:any=padKeep&&document.querySelector('#menu .sp[data-sp="'+padKeep+'"] .ar:not([disabled])');padKeep='';f=f||e.find(x=>x.classList.contains('go'))||e[0];if(f)padFocus(f)}}
 const pt=document.createElement('div');pt.id='pt';document.body.appendChild(pt);const ph=document.createElement('div');ph.id='padhint';ph.textContent='A select  -  B back  -  Start pause';document.body.appendChild(ph);
 function flash(t:string){pt.textContent=t;pt.style.display='block';setTimeout(()=>{pt.style.display='none'},2500)}
 addEventListener('gamepadconnected',()=>{document.body.classList.add('pad');padUsed=true;flash('Gamepad connected')});
@@ -183,7 +184,16 @@ function show(n){curScreen=n;inMenu=true;const m=$('menu');m.className='';
  else if(n==='modes')m.innerHTML=`<small>Playing as ${nick}</small><h2>Pick your game</h2><div class="row"><button class="card" id="qm">Quick match<span>5v5 vs CPU, two halves</span></button><button class="card" id="tr">Training<span>Free play, no clock</span></button><button class="card" id="so">Shootout<span>5 rounds, beat the defender</span></button><button class="card" id="ol">Play online<span>Live match with friends</span></button></div><button class="chip" data-to="name">Change name</button>`;
  else if(n==='pause'){m.className='ov';m.innerHTML=`<h2>Paused</h2><small>${online?'A bot plays for you while this menu is open':'Match paused'}</small><button class="go" id="rsm">Resume</button><button class="chip" id="lvm">Leave match</button>`;if(online)online.send('afk',{on:1})}
  else if(n==='lobby')lobby();
- else m.innerHTML=`<h2>Match settings</h2><small>Half length</small><div class="row">${chips([[60,'1:00'],[150,'2:30'],[300,'5:00']],'l',cfg.len)}</div><small>CPU level</small><div class="row">${chips([[.85,'Easy'],[1,'Normal'],[1.12,'Hard']],'d',cfg.diff)}</div><small>Stadium</small><div class="row">${fieldRow(cfg.field,1)}</div><small>Your team</small><div class="row tm">${teamRow(0,cfg.teams[0],1)}</div><small>Opponent</small><div class="row tm">${teamRow(1,cfg.teams[1],1)}</div><button class="go" id="st">Kick off</button><button class="chip" data-to="modes">Back</button>`}
+ else m.innerHTML=`<h2>Match setup</h2><div class="stp">${spTeam('t0',cfg.teams[0],cfg.teams,1,'Your team')}${spField(cfg.field,1)}${spTeam('t1',cfg.teams[1],cfg.teams,1,'Opponent')}</div><div class="opts"><span>Half</span>${chips([[60,'1:00'],[150,'2:30'],[300,'5:00']],'l',cfg.len)}<span>CPU</span>${chips([[.85,'Easy'],[1,'Normal'],[1.12,'Hard']],'d',cfg.diff)}</div><div class="row"><button class="go" id="st">Kick off</button><button class="chip" data-to="modes">Back</button></div>`}
+const jersey=(c:number,s:number)=>`<svg class="jy" viewBox="0 0 64 64"><path d="M20 6 6 14l6 12 6-3v31h28V23l6 3 6-12-14-8c-2 5-6 7-12 7S22 11 20 6z" fill="${hex(c)}" stroke="rgba(255,255,255,.4)" stroke-width="1.5"/><rect x="21" y="47" width="22" height="12" rx="2" fill="${hex(s)}"/></svg>`;
+const arrows=(on:boolean,body:string)=>`<div class="rw"><button class="ar" data-d="-1" ${on?'':'disabled'} aria-label="Previous">&#8249;</button><div class="c2">${body}</div><button class="ar" data-d="1" ${on?'':'disabled'} aria-label="Next">&#8250;</button></div>`;
+const spTeam=(key:string,idx:number,ids:number[],on:any,label:string)=>{const T=TEAMS[idx],side=key==='t0'?0:1,sc=shirts(ids),away=side===1&&sc[1]!==T.c;
+ return`<div class="sp${on?'':' off'}" data-sp="${key}"><small class="lb">${label}</small>${arrows(!!on,`${jersey(sc[side],away?T.c:T.s)}<b>${T.n}</b><span>${away?'away kit':on?'tap < > to change':'picked by captain'}</span>`)}</div>`};
+const spField=(cur:string,on:any)=>{const F=FIELDS.find(f=>f.id===cur)||FIELDS[0];return`<div class="sp${on?'':' off'}" data-sp="fd"><small class="lb">Stadium</small>${arrows(!!on,`<div class="th ${F.id}"></div><b>${F.n}</b><span>${on?'tap < > to change':'picked by captain'}</span>`)}</div>`};
+function spinStep(key:string,dir:number,onl:boolean){const T=TEAMS.length,F=FIELDS.length;
+ if(key==='fd'){const cur=onl?lob.field:cfg.field,i=FIELDS.findIndex(f=>f.id===cur),nx=FIELDS[(i+dir+F)%F].id;if(onl)online.send('cfg',{field:nx});else{cfg.field=nx;show('set')}}
+ else{const sd=key==='t0'?0:1,tm=onl?lob.teams:cfg.teams;let v=(tm[sd]+dir+T)%T;if(v===tm[1-sd])v=(v+dir+T)%T;if(onl)online.send('cfg',{team:v,side:sd});else{cfg.teams[sd]=v;show('set')}}
+ padKeep=key}
 const dot=c=>`<i class="dt" style="background:${hex(c)}"></i>`;
 const fieldRow=(cur,on)=>FIELDS.map(f=>`<button class="chip${cur===f.id?' on':''}" ${on?`data-fd="${f.id}"`:'disabled'}>${f.n}</button>`).join('');
 const teamRow=(side,cur,on)=>TEAMS.map((t,i)=>`<button class="chip${cur===i?' on':''}" ${on?`data-t${side}="${i}"`:'disabled'}>${dot(t.c)}${t.n}</button>`).join('');
@@ -194,25 +204,26 @@ function lobby(){const c=lob,both=c.caps[0]>=0&&c.caps[1]>=0,chooser=me===c.choo
  else if(c.phase==='lobby'){
   h+=`<h2>Waiting room</h2><div class="row"><button class="chip" id="cl">Share invite link</button></div>`;
   h+=host?`<div class="row">${[['versus','Against each other'],['coop','Together vs bots']].map(([v,l])=>`<button class="chip${c.mode===v?' on':''}" data-mode="${v}">${l}</button>`).join('')}</div>`:`<small>${c.mode==='coop'?'Together vs bots':'Against each other'}</small>`;
-  h+=c.pl.map(p=>`<div class="row"><span class="chip ${p.ready?'on':''}">${p.idx===c.host?'HOST ':''}${p.nick}${c.mode==='coop'?'':p.idx<5?' - A':' - B'}${p.ready?' - ready':''}</span>${host&&p.idx!==me?`<button class="chip" data-kick="${p.idx}">Kick</button><button class="chip" data-host="${p.idx}">Make host</button>`:''}</div>`).join('');
+  const pr=(p:any)=>`<div class="pl${p.ready?' rd':''}${p.idx===me?' me':''}"><span>${p.idx===c.host?'&#9733; ':''}${p.nick}</span>${host&&p.idx!==me?`<button class="ic" data-host="${p.idx}" aria-label="Make host">&#9733;</button><button class="ic" data-kick="${p.idx}" aria-label="Kick">&#10005;</button>`:''}</div>`;
+  h+=`<div class="wr">${[0,1].map(sd=>`<div><small>${c.mode==='coop'?(sd?'Bots':'Your team'):'Team '+(sd?'B':'A')}</small>${c.mode==='coop'&&sd?'<div class="pl"><span>5 bots</span></div>':(c.pl.filter((p:any)=>(p.idx<5?0:1)===sd).map(pr).join('')||'<div class="pl"><span>-</span></div>')}</div>`).join('')}</div>`;
   if(c.mode==='versus')h+=`<button class="chip" id="sd">Switch my side</button>`;
   h+=host?`<button class="go" id="ls">Start match</button><small>Everyone else must tap Ready first.</small>`:`<button class="go" id="rd">${mine&&mine.ready?'Not ready':"I'm ready"}</button>`}
  else if(c.phase==='toss')h+=`<h2>Coin toss</h2>`+(me===c.caller?`<small>You are captain. Call it!</small><div class="row"><button class="go" data-call="H">Heads</button><button class="go" data-call="T">Tails</button></div>`:`<small>The captain is calling the coin...</small>`);
  else{h+=`<h2>Match setup</h2>`;if(c.toss)h+=`<small>It landed ${c.toss.result==='H'?'heads':'tails'}. ${TEAMS[c.teams[c.toss.winner]].sh} captain picks the stadium.</small>`;
   const on=i=>both?me===c.caps[i]:chooser;
-  h+=`<small>Stadium</small><div class="row">${fieldRow(c.field,chooser)}</div><small>Team A</small><div class="row tm">${teamRow(0,c.teams[0],on(0))}</div><small>Team B</small><div class="row tm">${teamRow(1,c.teams[1],on(1))}</div>`;
+  h+=`<div class="stp">${spTeam('t0',c.teams[0],c.teams,on(0),'Team A')}${spField(c.field,chooser)}${spTeam('t1',c.teams[1],c.teams,on(1),'Team B')}</div>`;
   h+=chooser?`<button class="go" id="ls">Kick off</button>`:`<small>Waiting for the captain to start...</small>`}
  $('menu').innerHTML=h+`<button class="chip" id="lv">Leave</button>`}
-function lobbyClick(b,d){if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==undefined)online.send('cfg',{team:+d.t0,side:0});else if(d.t1!==undefined)online.send('cfg',{team:+d.t1,side:1});else if(d.call)online.send('call',{c:d.call});
+function lobbyClick(b,d){if(d.d!==undefined){spinStep(b.closest('.sp').dataset.sp,+d.d,true);return true}if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==undefined)online.send('cfg',{team:+d.t0,side:0});else if(d.t1!==undefined)online.send('cfg',{team:+d.t1,side:1});else if(d.call)online.send('call',{c:d.call});
  else if(d.mode)online.send('mode',{m:d.mode});else if(d.kick)online.send('kick',{idx:+d.kick});else if(d.host)online.send('host',{idx:+d.host});else if(b.id==='rd')online.send('rdy');else if(b.id==='sd')online.send('side');
  else if(b.id==='cl'){const url=location.origin+location.pathname+'?room='+lob.code;try{navigator.share?navigator.share({title:'Join my Street FC room',url}):navigator.clipboard.writeText(url);b.textContent='Link ready'}catch(e){b.textContent=url}}
  else if(b.id==='ls')online.send('start');else if(b.id==='lv'){const r=online;online=null;lob=null;r.leave();show('modes')}else return false;return true}
 $('menu').onclick=e=>{lockLand();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
- if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
+ if(d.d!==undefined)spinStep(b.closest('.sp').dataset.sp,+d.d,false);else if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
  else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'ODOGWU';if(roomParam&&!roomUsed){roomUsed=true;goOnline(roomParam,'join')}else show('modes')}
  else if(b.id==='rs')start({mode:s.mode,len:s.len,diff:s.diff});else if(b.id==='mn')show('modes');else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
 function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
-$('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');
+$('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');const dbg=new URLSearchParams(location.search).get('screen');if(dbg==='set')show('set');
 function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);
  if(online){fdt=dt;netTick(s,dt);if(!inMenu&&!portrait()){const hu=human();sendIn(hu,n);for(const k in press)press[k]=0}}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
  render(dt);minimap();ui();
@@ -230,4 +241,5 @@ async function goOnline(code:string,how:string){const e:any=document.getElementB
  try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}
  catch(x){if(!document.getElementById('oe'))show('online');e.textContent=how==='join'?'Room not found, or the match already started.':'Could not connect. Is the server running?'}}
 function sendIn(o:any,t:number){const j=JSON.stringify(o);if(j!==lastIn||t-lastSend>100||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
+if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s}}; // debug hook for automated screenshots (only with ?debug)
 requestAnimationFrame(loop);

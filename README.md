@@ -35,3 +35,5 @@ A dropped connection keeps your player (a bot covers) for 60s while the client r
 ## Gamepad
 Plug in / pair a controller and press any button. In a match: left stick or d-pad move, X(cross) pass / press / call, Square shoot (hold) / tackle, Triangle through pass, Circle lob / slide, L1 switch, R1 sprint, L2 shield, R2 knock-on, Start = pause menu.
 In menus: d-pad or left stick moves the highlight, X selects, Circle goes back, Start resumes. Touch controls hide while a pad is connected.
+
+Team / stadium pickers: use the arrow buttons (touch) or d-pad left/right (gamepad) to cycle; up/down moves between rows.
