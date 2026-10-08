@@ -1,8 +1,13 @@
 import { Client } from 'colyseus.js';
-export async function connect(nick: string, code: string) {
-  const url = (import.meta as any).env?.VITE_SERVER_URL || `ws://${location.hostname}:2567`;
-  return new Client(url).joinOrCreate('match', { nick, code });
+let client: any;
+export async function connect(nick: string, code: string, how: string) {
+  const url = (import.meta as any).env?.VITE_SERVER_URL || `ws://${location.hostname}:2567`; client = new Client(url);
+  const o = { nick, code, kind: how === 'quick' ? 'quick' : 'private' };
+  const room = how === 'quick' ? await client.joinOrCreate('match', o) : how === 'create' ? await client.create('match', o) : await client.join('match', o);
+  try { sessionStorage.setItem('sfc-token', room.reconnectionToken); } catch { }
+  return room;
 }
+export async function reconnect() { const t = sessionStorage.getItem('sfc-token'); if (!client || !t) throw new Error('no token'); const r = await client.reconnect(t); sessionStorage.setItem('sfc-token', r.reconnectionToken); return r; }
 // Server snapshot -> local state. Positions are targets; netTick smooths toward them.
 export function applySnap(s: any, m: any) {
   s.time = m.t; s.half = m.h; s.score = m.sc; s.msg = m.m; s.pause = m.pa; s.over = !!m.ov; s.own = m.o; s.nicks = m.n; s.kind = m.k; s.sub = m.u; s.gt = m.gt;

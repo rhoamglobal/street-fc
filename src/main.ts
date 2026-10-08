@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import './style.css';
 import {W,H,GOAL,R,BR,clamp,mk,step,ai,NOACT} from '../shared/sim';
-import {connect,applySnap,netTick} from './net';
+import {connect,reconnect,applySnap,netTick} from './net';
 import {TEAMS,FIELDS} from '../shared/data';
 // ===== 3D RENDER (Three.js): sim x,y -> world x,z at 0.1 scale =====
 const $=id=>document.getElementById(id),K=.1;
@@ -137,11 +137,11 @@ function ui(){const opp=s.own>=0&&s.ps[me]&&s.ps[s.own].t!==s.ps[me].t;const md=
  if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`+(s.over?'<div><button id="rs">Play again</button> <button id="mn">Menu</button></div>':''):'';
   if(s.over){$('rs').onclick=()=>start({mode:s.mode,len:s.len,diff:s.diff});$('mn').onclick=()=>show('modes')}}}
 // ===== APP FLOW: name -> modes -> settings -> match =====
-const cfg={len:150,diff:1,field:'street',teams:[0,2]},CH=['Odogwu','Sharp Boy','Jagaban','Small Pele','Oga Striker','Zaki','Baller','Golden Boy'];
+const roomParam=new URLSearchParams(location.search).get('room');let roomUsed=false;const cfg={len:150,diff:1,field:'street',teams:[0,2]},CH=['Odogwu','Sharp Boy','Jagaban','Small Pele','Oga Striker','Zaki','Baller','Golden Boy'];
 const chips=(a,key,cur)=>a.map(([v,l])=>`<button class="chip${cur===v?' on':''}" data-${key}="${v}">${l}</button>`).join('');
 function show(n){inMenu=true;const m=$('menu');m.className='';
  if(n==='name')m.innerHTML=`<small>GUEST PLAYER</small><h2>Pick your street name</h2><input id="ni" maxlength="14" placeholder="ODOGWU" value="${nick}" aria-label="Nickname"><div class="row">${CH.map(c=>`<button class="chip" data-n="${c}">${c}</button>`).join('')}</div><small>This shows above your player.</small><button class="go" id="gn">Continue</button>`;
- else if(n==='online')m.innerHTML=`<h2>Play online</h2><small>Friends who enter the same code share a match. Leave blank for quick match.</small><input id="oc" maxlength="6" placeholder="CODE" aria-label="Room code"><div class="row"><button class="go" id="oj">Join match</button></div><small id="oe"></small><button class="chip" data-to="modes">Back</button>`;
+ else if(n==='online')m.innerHTML=`<h2>Play online</h2><div class="row"><button class="card" id="oq">Quick match<span>Starts automatically, bots fill in</span></button><button class="card" id="op">Private room<span>Play with friends</span></button></div><small>Got a room code?</small><input id="oc" maxlength="6" placeholder="CODE" aria-label="Room code"><div class="row"><button class="go" id="oj">Join room</button></div><small id="oe"></small><button class="chip" data-to="modes">Back</button>`;
  else if(n==='modes')m.innerHTML=`<small>Playing as ${nick}</small><h2>Pick your game</h2><div class="row"><button class="card" id="qm">Quick match<span>5v5 vs CPU, two halves</span></button><button class="card" id="tr">Training<span>Free play, no clock</span></button><button class="card" id="so">Shootout<span>5 rounds, beat the defender</span></button><button class="card" id="ol">Play online<span>Live match with friends</span></button></div><button class="chip" data-to="name">Change name</button>`;
  else if(n==='pause'){m.className='ov';m.innerHTML=`<h2>Paused</h2><small>${online?'A bot plays for you while this menu is open':'Match paused'}</small><button class="go" id="rsm">Resume</button><button class="chip" id="lvm">Leave match</button>`;if(online)online.send('afk',{on:1})}
  else if(n==='lobby')lobby();
@@ -150,19 +150,29 @@ const dot=c=>`<i class="dt" style="background:${hex(c)}"></i>`;
 const fieldRow=(cur,on)=>FIELDS.map(f=>`<button class="chip${cur===f.id?' on':''}" ${on?`data-fd="${f.id}"`:'disabled'}>${f.n}</button>`).join('');
 const teamRow=(side,cur,on)=>TEAMS.map((t,i)=>`<button class="chip${cur===i?' on':''}" ${on?`data-t${side}="${i}"`:'disabled'}>${dot(t.c)}${t.n}</button>`).join('');
 // online lobby: coin toss between the two captains, winner picks the stadium; captains pick their own kit
-function lobby(){const c=lob,both=c.caps[0]>=0&&c.caps[1]>=0,chooser=me===c.chooser;
- let h=`<small>ROOM ${c.code}</small><h2>${c.phase==='toss'?'Coin toss':'Match setup'}</h2>`;
- if(c.phase==='toss')h+=me===c.caller?`<small>You are captain. Call it!</small><div class="row"><button class="go" data-call="H">Heads</button><button class="go" data-call="T">Tails</button></div>`:`<small>The captain is calling the coin...</small>`;
- else{if(c.toss)h+=`<small>It landed ${c.toss.result==='H'?'heads':'tails'}. ${TEAMS[c.teams[c.toss.winner]].sh} captain picks the stadium.</small>`;
+function lobby(){const c=lob,both=c.caps[0]>=0&&c.caps[1]>=0,chooser=me===c.chooser,host=me===c.host,mine=c.pl.find(p=>p.idx===me);
+ let h=`<small>ROOM ${c.code}</small>`;
+ if(c.phase==='wait')h+=`<h2>Finding players</h2><small>${c.pl.length}/10 in the room. Starting in ${c.eta}s, bots fill the empty spots.</small><div class="row">${c.pl.map(p=>`<span class="chip on">${p.nick}</span>`).join('')}</div>`;
+ else if(c.phase==='lobby'){
+  h+=`<h2>Waiting room</h2><div class="row"><button class="chip" id="cl">Share invite link</button></div>`;
+  h+=host?`<div class="row">${[['versus','Against each other'],['coop','Together vs bots']].map(([v,l])=>`<button class="chip${c.mode===v?' on':''}" data-mode="${v}">${l}</button>`).join('')}</div>`:`<small>${c.mode==='coop'?'Together vs bots':'Against each other'}</small>`;
+  h+=c.pl.map(p=>`<div class="row"><span class="chip ${p.ready?'on':''}">${p.idx===c.host?'HOST ':''}${p.nick}${c.mode==='coop'?'':p.idx<5?' - A':' - B'}${p.ready?' - ready':''}</span>${host&&p.idx!==me?`<button class="chip" data-kick="${p.idx}">Kick</button><button class="chip" data-host="${p.idx}">Make host</button>`:''}</div>`).join('');
+  if(c.mode==='versus')h+=`<button class="chip" id="sd">Switch my side</button>`;
+  h+=host?`<button class="go" id="ls">Start match</button><small>Everyone else must tap Ready first.</small>`:`<button class="go" id="rd">${mine&&mine.ready?'Not ready':"I'm ready"}</button>`}
+ else if(c.phase==='toss')h+=`<h2>Coin toss</h2>`+(me===c.caller?`<small>You are captain. Call it!</small><div class="row"><button class="go" data-call="H">Heads</button><button class="go" data-call="T">Tails</button></div>`:`<small>The captain is calling the coin...</small>`);
+ else{h+=`<h2>Match setup</h2>`;if(c.toss)h+=`<small>It landed ${c.toss.result==='H'?'heads':'tails'}. ${TEAMS[c.teams[c.toss.winner]].sh} captain picks the stadium.</small>`;
   const on=i=>both?me===c.caps[i]:chooser;
   h+=`<small>Stadium</small><div class="row">${fieldRow(c.field,chooser)}</div><small>Team A</small><div class="row tm">${teamRow(0,c.teams[0],on(0))}</div><small>Team B</small><div class="row tm">${teamRow(1,c.teams[1],on(1))}</div>`;
   h+=chooser?`<button class="go" id="ls">Kick off</button>`:`<small>Waiting for the captain to start...</small>`}
  $('menu').innerHTML=h+`<button class="chip" id="lv">Leave</button>`}
-function lobbyClick(b,d){if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==undefined)online.send('cfg',{team:+d.t0,side:0});else if(d.t1!==undefined)online.send('cfg',{team:+d.t1,side:1});else if(d.call)online.send('call',{c:d.call});else if(b.id==='ls')online.send('start');else if(b.id==='lv'){online.leave();online=null;lob=null;show('modes')}else return false;return true}
+function lobbyClick(b,d){if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==undefined)online.send('cfg',{team:+d.t0,side:0});else if(d.t1!==undefined)online.send('cfg',{team:+d.t1,side:1});else if(d.call)online.send('call',{c:d.call});
+ else if(d.mode)online.send('mode',{m:d.mode});else if(d.kick)online.send('kick',{idx:+d.kick});else if(d.host)online.send('host',{idx:+d.host});else if(b.id==='rd')online.send('rdy');else if(b.id==='sd')online.send('side');
+ else if(b.id==='cl'){const url=location.origin+location.pathname+'?room='+lob.code;try{navigator.share?navigator.share({title:'Join my Street FC room',url}):navigator.clipboard.writeText(url);b.textContent='Link ready'}catch(e){b.textContent=url}}
+ else if(b.id==='ls')online.send('start');else if(b.id==='lv'){const r=online;online=null;lob=null;r.leave();show('modes')}else return false;return true}
 $('menu').onclick=e=>{lockLand();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
  if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
- else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'ODOGWU';show('modes')}
- else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oj')goOnline($('oc').value);else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
+ else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'ODOGWU';if(roomParam&&!roomUsed){roomUsed=true;goOnline(roomParam,'join')}else show('modes')}
+ else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
 function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
 $('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');
 function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;
@@ -171,9 +181,15 @@ function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
-async function goOnline(code:string){const e=$('oe');e.textContent='Connecting...';
- try{const room=await connect(nick,(code||'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g,'')||'PUBLIC');online=room;s=mk();shown='';
-  room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m));room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onLeave(()=>{online=null;lob=null;show('modes')});room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});room.send('ready')}
- catch(x){e.textContent='Could not connect. Is the server running?'}}
+function wire(room:any){online=room;shown='';
+ room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m));room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});
+ room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});
+ room.onLeave(async(code:number)=>{if(online!==room)return;if(code===1000||code===4000){online=null;lob=null;show('modes');return}
+  for(let i=0;i<10;i++){$('msg').innerHTML='<span class="pop">RECONNECTING...</span>';await new Promise(r=>setTimeout(r,3000));try{wire(await reconnect());return}catch(e){}}
+  shown='';online=null;lob=null;show('modes')});
+ room.send('ready')}
+async function goOnline(code:string,how:string){const e:any=document.getElementById('oe')||{};e.textContent='Connecting...';
+ try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}
+ catch(x){if(!document.getElementById('oe'))show('online');e.textContent=how==='join'?'Room not found, or the match already started.':'Could not connect. Is the server running?'}}
 function sendIn(o:any,t:number){const j=JSON.stringify(o);if(j!==lastIn||t-lastSend>100||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
 requestAnimationFrame(loop);
