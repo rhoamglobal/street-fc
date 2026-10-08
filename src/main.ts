@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as THREE from 'three';
 import './style.css';
-import {W,H,GOAL,R,BR,clamp,mk,step,ai,NOACT} from '../shared/sim';
+import {W,H,GOAL,R,BR,clamp,mk,step,ai,NOACT,summary} from '../shared/sim';
 import {connect,reconnect,applySnap,netTick} from './net';
 import {TEAMS,FIELDS} from '../shared/data';
 // ===== 3D RENDER (Three.js): sim x,y -> world x,z at 0.1 scale =====
@@ -117,29 +117,67 @@ function gp(){const g=navigator.getGamepads?[...navigator.getGamepads()].find(x=
  return{mx,my,pass:B(0),lob:B(1),shoot:B(2),thru:B(3),sw:B(4),sprint:B(5),shield:B(6),skill:B(7),start:B(9)}}
 function human(){const g=gp(),o={mx:stick.x+(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0),my:stick.y+(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0)};
  const on=k=>btn[k]||press[k]||Object.keys(KM).some(c=>KM[c]===k&&keys[c])||(g&&g[k]);
- if(g){o.mx+=g.mx;o.my+=g.my;if(g.sw&&!pgSw)sw();pgSw=g.sw;if(g.start&&!pgSt){paused=!paused;$('pz').textContent=paused?'>':'II'}pgSt=g.start}
+ if(g){o.mx+=g.mx;o.my+=g.my;if(g.sw&&!pgSw)sw();pgSw=g.sw;if(g.start&&!pgSt){$('mb').click()}pgSt=g.start}
  for(const k of['sprint','pass','lob','thru','shield','skill','tackle'])o[k]=on(k)?1:0;
  const opp=s.own>=0&&s.ps[s.own].t!==s.ps[me].t,down=!opp&&on('shoot');if(down)chg+=fdt;o.shoot=0;if(!down&&wasDown){o.shoot=clamp(.4+chg*.75,.4,1);chg=0}wasDown=down;
  $('pwr').style.display=down?'block':'none';$('pwr').firstChild.style.width=Math.min(100,(.4+chg*.75)*100)+'%';
- if(opp){o.press=o.pass;o.pass=0;if(on('shoot'))o.tackle=1;if(o.lob){o.slide=1;o.lob=0}}else if(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t&&o.pass){o.call=1;o.pass=0}else if(s.own!==me&&o.pass){o.tackle=1;o.pass=0}return o} // defending: X press, Square tackle, Circle slide
+ if(opp){o.press=o.pass;o.pass=0;if(on('shoot'))o.tackle=1;if(o.lob){o.slide=1;o.lob=0}}else if(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t&&o.pass){o.call=1;o.pass=0}else if(s.own!==me&&o.pass){o.tackle=1;o.pass=0}o.h=1;return o} // defending: X press, Square tackle, Circle slide
 // ===== UI + LOOP =====
 function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own].t===0){me=s.own;return}
  let bd=Math.hypot(s.ps[me].x-s.ball.x,s.ps[me].y-s.ball.y),bi=me;s.ps.forEach((q,j)=>{if(q.t===0&&!q.off){const d=Math.hypot(q.x-s.ball.x,q.y-s.ball.y);if(d<bd-25){bd=d;bi=j}}});me=bi}
 const portrait=()=>matchMedia('(orientation:portrait) and (pointer:coarse)').matches;
 function lockLand(){const e=document.documentElement;try{(e.requestFullscreen?e.requestFullscreen():Promise.reject()).then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}catch(x){}}
 let shown='',last=performance.now(),acc=0,loaded=false;
-let lastOpp=null;const lb=(k,t)=>{document.querySelector('[data-k='+k+'] small').textContent=t};
+let curScreen='',padUsed=false,padPrev:any={},padT=0;
+// ===== GAMEPAD IN MENUS: d-pad / left stick moves the highlight, A (cross) selects, B (circle) goes back, Start resumes =====
+const padEls=()=>[...document.querySelectorAll('#menu button:not([disabled]),#menu input')].filter((e:any)=>e.offsetParent!==null);
+function padFocus(e:any){document.querySelectorAll('#menu .pf').forEach((x:any)=>x.classList.remove('pf'));e.classList.add('pf');e.scrollIntoView({block:'nearest',inline:'nearest'})}
+function padNav(dir:string){const els:any[]=padEls();if(!els.length)return;const cur:any=els.find(e=>e.classList.contains('pf'));if(!cur){padFocus(els[0]);return}
+ const r=cur.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let best:any=null,bs=1e9;
+ els.forEach(e=>{if(e===cur)return;const q=e.getBoundingClientRect(),dx=q.left+q.width/2-cx,dy=q.top+q.height/2-cy,h=dir==='r'||dir==='l';
+  if(!(dir==='r'?dx>4:dir==='l'?dx<-4:dir==='d'?dy>4:dy<-4))return;const sc=(h?Math.abs(dx):Math.abs(dy))+(h?Math.abs(dy):Math.abs(dx))*2.5;if(sc<bs){bs=sc;best=e}});
+ if(best)padFocus(best)}
+function padPoll(now:number){const g:any=navigator.getGamepads?[...navigator.getGamepads()].find((x:any)=>x&&x.connected):null;
+ document.body.classList.toggle('inm',inMenu);if(!g)return;
+ const B=(i:number)=>!!(g.buttons[i]&&g.buttons[i].pressed),ax=g.axes[0]||0,ay=g.axes[1]||0;
+ const st:any={a:B(0),b:B(1),s:B(9),dir:B(12)||ay<-.6?'u':B(13)||ay>.6?'d':B(14)||ax<-.6?'l':B(15)||ax>.6?'r':''};
+ if(st.a||st.b||st.s||st.dir)padUsed=true;
+ if(!inMenu){padPrev=st;return}
+ const pd=padPrev.dir||'';if(st.dir){if(st.dir!==pd){padNav(st.dir);padT=now+380}else if(now>=padT){padNav(st.dir);padT=now+140}}
+ if(st.a&&!padPrev.a){const f:any=document.querySelector('#menu .pf');if(f&&f.offsetParent!==null){f.tagName==='INPUT'?f.focus():f.click()}else{const e:any=padEls();if(e[0])padFocus(e[0])}}
+ if(st.b&&!padPrev.b){const t:any=document.querySelector('#menu [data-to]')||document.getElementById('rsm')||document.getElementById('lv');if(t)t.click()}
+ if(st.s&&!padPrev.s&&curScreen==='pause')$('rsm').click();
+ padPrev=st;
+ if(padUsed&&!document.querySelector('#menu .pf')){const e:any[]=padEls();const f=e.find(x=>x.classList.contains('go'))||e[0];if(f)padFocus(f)}}
+const pt=document.createElement('div');pt.id='pt';document.body.appendChild(pt);const ph=document.createElement('div');ph.id='padhint';ph.textContent='A select  -  B back  -  Start pause';document.body.appendChild(ph);
+function flash(t:string){pt.textContent=t;pt.style.display='block';setTimeout(()=>{pt.style.display='none'},2500)}
+addEventListener('gamepadconnected',()=>{document.body.classList.add('pad');padUsed=true;flash('Gamepad connected')});
+addEventListener('gamepaddisconnected',()=>{document.body.classList.remove('pad');flash('Gamepad disconnected')});
+let sumT:any=0,sumData:any=null;let lastOpp=null;
+const POOL=['Chidi','Tunde','Emeka','Musa','Bashir','Segun','Ifeanyi','Yusuf','Kelechi','Ayo'];
+const nm=(k:number,h?:any)=>online?((s.nicks&&s.nicks[k])||POOL[k%10]):(h?nick:POOL[k%10]); // humans by name, bots by pool name
+function showSummary(){const m=$('menu');inMenu=true;m.className='sumv';
+ if(s.mode!=='match'){m.innerHTML=`<h2>${s.mode==='shootout'?'Shootout':'Training'}</h2><div class="big">${s.score[0]}${s.mode==='shootout'?' / 5':''}</div>`+(online?'':`<div class="row"><button class="go" id="rs">Play again</button><button class="chip" id="mn">Menu</button></div>`);return}
+ const d=online?sumData:summary(s);if(!d)return;
+ const hu=(k:number)=>d.rows[k]&&d.rows[k].hu,N=(k:number)=>nm(k,hu(k)),T=d.names;
+ const sc=[0,1].map(t=>d.ev.filter((e:any)=>e.t===t).map((e:any)=>`<div>${e.mn}' ${e.k>=0?N(e.k):''}${e.og?' (OG)':''}${e.as>=0?` <small>(${N(e.as)})</small>`:''}</div>`).join('')||'<div><small>-</small></div>');
+ const bar=(l:string,a:number,b:number)=>{const p=a+b?a/(a+b)*100:50;return`<div class="st"><span>${a}</span><i><u style="width:${p}%"></u></i><span>${b}</span><em>${l}</em></div>`};
+ const tm=d.team,mv=d.rows[d.motm],top=d.rows.slice().sort((a:any,b:any)=>b.r-a.r).slice(0,5);
+ m.innerHTML=`<div class="sg"><div><div class="sc"><b>${T[0]}</b> <span class="big">${d.score[0]} - ${d.score[1]}</span> <b>${T[1]}</b></div><div class="two"><div>${sc[0]}</div><div>${sc[1]}</div></div>${bar('Possession %',tm[0].poss,tm[1].poss)}${bar('Shots',tm[0].sh,tm[1].sh)}${bar('Pass accuracy %',tm[0].pacc,tm[1].pacc)}${bar('Fouls',tm[0].fl,tm[1].fl)}</div>
+ <div><div class="motm"><small>MAN OF THE MATCH</small><b>${N(mv.k)}</b><span>${T[mv.t]} - rated ${mv.r.toFixed(1)}</span><small>${mv.g} goal${mv.g===1?'':'s'}, ${mv.a} assist${mv.a===1?'':'s'}, ${mv.tk} tackle${mv.tk===1?'':'s'}</small></div><div class="rt">${top.map((r:any)=>`<div><span>${N(r.k)} <small>${T[r.t]}</small></span><b>${r.r.toFixed(1)}</b></div>`).join('')}</div></div></div>`+(online?`<small>Back to the waiting room shortly...</small><button class="chip" id="lv">Leave</button>`:`<div class="row"><button class="go" id="rs">Play again</button><button class="chip" id="mn">Menu</button></div>`)}
+const lb=(k,t)=>{document.querySelector('[data-k='+k+'] small').textContent=t};
 function ui(){const opp=s.own>=0&&s.ps[me]&&s.ps[s.own].t!==s.ps[me].t;const md=opp?1:(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t)?2:0;if(md!==lastOpp){lastOpp=md;lb('pass',['Pass','Press','Call'][md]);lb('shoot',opp?'Tackle':'Shoot');lb('lob',opp?'Slide':'Lob');lb('thru',opp?'-':'Through')}const sh=s.mode==='shootout',tr=s.mode==='training',m=Math.max(0,Math.ceil(s.time));$('sa').textContent=s.score[0];$('sb').textContent=s.score[1];
  $('tm').textContent=tr?'FREE':Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('hf').textContent=sh?'ROUND '+Math.min(s.round,5)+' OF 5':tr?'TRAINING':s.half===1?'1ST HALF':'2ND HALF';
  $('toast').style.display=s.pause>0&&s.msg==='Kickoff'?'block':'none';
- const txt=s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg),sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
+ const txt=s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg);let sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
+ if(!s.over&&s.kind==='goal'&&s.pause>0&&s.sc>=0&&s.mode==='match')sub=`${nm(s.sc,s.st&&s.st[s.sc]&&s.st[s.sc].hu>10)}${s.og?' (OG)':''} ${s.mn}'${s.as>=0?' - assist '+nm(s.as,s.st&&s.st[s.as]&&s.st[s.as].hu>10):''} - ${s.sub}`;
  const key=txt+'|'+sub+'|'+s.kind+s.over;
- if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`+(s.over?'<div><button id="rs">Play again</button> <button id="mn">Menu</button></div>':''):'';
-  if(s.over){$('rs').onclick=()=>start({mode:s.mode,len:s.len,diff:s.diff});$('mn').onclick=()=>show('modes')}}}
+ if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`:''}
+ if(s.over&&!sumT){sumT=setTimeout(()=>{if(s.over)showSummary()},2300)}else if(!s.over&&sumT){clearTimeout(sumT);sumT=0}}
 // ===== APP FLOW: name -> modes -> settings -> match =====
 const roomParam=new URLSearchParams(location.search).get('room');let roomUsed=false;const cfg={len:150,diff:1,field:'street',teams:[0,2]},CH=['Odogwu','Sharp Boy','Jagaban','Small Pele','Oga Striker','Zaki','Baller','Golden Boy'];
 const chips=(a,key,cur)=>a.map(([v,l])=>`<button class="chip${cur===v?' on':''}" data-${key}="${v}">${l}</button>`).join('');
-function show(n){inMenu=true;const m=$('menu');m.className='';
+function show(n){curScreen=n;inMenu=true;const m=$('menu');m.className='';
  if(n==='name')m.innerHTML=`<small>GUEST PLAYER</small><h2>Pick your street name</h2><input id="ni" maxlength="14" placeholder="ODOGWU" value="${nick}" aria-label="Nickname"><div class="row">${CH.map(c=>`<button class="chip" data-n="${c}">${c}</button>`).join('')}</div><small>This shows above your player.</small><button class="go" id="gn">Continue</button>`;
  else if(n==='online')m.innerHTML=`<h2>Play online</h2><div class="row"><button class="card" id="oq">Quick match<span>Starts automatically, bots fill in</span></button><button class="card" id="op">Private room<span>Play with friends</span></button></div><small>Got a room code?</small><input id="oc" maxlength="6" placeholder="CODE" aria-label="Room code"><div class="row"><button class="go" id="oj">Join room</button></div><small id="oe"></small><button class="chip" data-to="modes">Back</button>`;
  else if(n==='modes')m.innerHTML=`<small>Playing as ${nick}</small><h2>Pick your game</h2><div class="row"><button class="card" id="qm">Quick match<span>5v5 vs CPU, two halves</span></button><button class="card" id="tr">Training<span>Free play, no clock</span></button><button class="card" id="so">Shootout<span>5 rounds, beat the defender</span></button><button class="card" id="ol">Play online<span>Live match with friends</span></button></div><button class="chip" data-to="name">Change name</button>`;
@@ -172,17 +210,17 @@ function lobbyClick(b,d){if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==
 $('menu').onclick=e=>{lockLand();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
  if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
  else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'ODOGWU';if(roomParam&&!roomUsed){roomUsed=true;goOnline(roomParam,'join')}else show('modes')}
- else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
+ else if(b.id==='rs')start({mode:s.mode,len:s.len,diff:s.diff});else if(b.id==='mn')show('modes');else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
 function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
 $('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');
-function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;
+function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);
  if(online){fdt=dt;netTick(s,dt);if(!inMenu&&!portrait()){const hu=human();sendIn(hu,n);for(const k in press)press[k]=0}}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
  render(dt);minimap();ui();
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
 function wire(room:any){online=room;shown='';
- room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m));room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});
+ room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m));room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onMessage('sum',(d:any)=>{sumData=d;if(s.over)showSummary()});
  room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});
  room.onLeave(async(code:number)=>{if(online!==room)return;if(code===1000||code===4000){online=null;lob=null;show('modes');return}
   for(let i=0;i<10;i++){$('msg').innerHTML='<span class="pop">RECONNECTING...</span>';await new Promise(r=>setTimeout(r,3000));try{wire(await reconnect());return}catch(e){}}

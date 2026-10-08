@@ -1,12 +1,12 @@
 import { Server, Room, Client } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { mk, step, ai, NOACT } from '../shared/sim';
+import { mk, step, ai, NOACT, summary } from '../shared/sim';
 import { TEAMS, FIELDS } from '../shared/data';
 
 // Two kinds of room:
 //  quick   : phase wait (countdown, bots fill in) -> play. Late joiners can take over a bot slot.
 //  private : phase lobby (code/link, ready check, host picks mode + moves players) -> [coin toss if humans on both sides] -> setup (stadium + kits) -> play -> back to lobby
-const QUICK_WAIT = 12000;
+const QUICK_WAIT = 12000, LEN = Number(process.env.LEN) || 150;
 class MatchRoom extends Room {
   maxClients = 10;
   s: any; afk = new Set<number>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
@@ -38,11 +38,11 @@ class MatchRoom extends Room {
   }
   regroup() { const ids = [...this.order]; const old = [...this.nicks]; const o = new Map(this.slots); this.slots.clear(); this.nicks = Array(10).fill('');
     for (const id of ids) { const k = this.assign(id); this.nicks[k] = old[o.get(id)!]; this.clients.find(c => c.sessionId === id)?.send('you', { idx: k }); } }
-  startMatch() { this.s = mk({ len: 150, names: this.names() }); this.cfg.phase = 'play'; this.overAt = 0; }
+  startMatch() { this.s = mk({ len: LEN, names: this.names() }); this.cfg.phase = 'play'; this.overAt = 0; }
   startQuick() { const c = this.cfg, r = () => Math.random() * TEAMS.length | 0; c.field = FIELDS[Math.random() * FIELDS.length | 0].id; const a = r(); let b = r(); if (b === a) b = (a + 1) % TEAMS.length; c.teams = [a, b]; this.startMatch(); this.pub(); }
   onCreate(o: any) {
     this.code = String(o.code || 'QUICK'); this.cfg.kind = o.kind === 'quick' ? 'quick' : 'private'; this.cfg.phase = this.cfg.kind === 'quick' ? 'wait' : 'lobby';
-    this.setMetadata({ code: this.code }); this.s = mk({ len: 150, names: this.names() });
+    this.setMetadata({ code: this.code }); this.s = mk({ len: LEN, names: this.names() });
     for (let i = 0; i < 10; i++) { this.held[i] = {}; this.latch[i] = {}; }
     const me = (c: Client) => this.slots.get(c.sessionId);
     this.onMessage('ready', (c) => { this.ready.add(c.sessionId); c.send('you', { idx: me(c) }); this.pub(); });
@@ -98,15 +98,15 @@ class MatchRoom extends Room {
   tick() {
     const s = this.s, c = this.cfg, hum = new Set([...this.slots.values()].filter(k => !this.afk.has(k)));
     if (s.over) {
-      if (!this.overAt) this.overAt = Date.now();
-      else if (Date.now() - this.overAt > 6000) {
+      if (!this.overAt) { this.overAt = Date.now(); this.broadcast('sum', summary(s)); } // full-time report, then back to the lobby after 20s
+      else if (Date.now() - this.overAt > 20000) {
         this.overAt = 0;
-        if (c.kind === 'quick') this.s = mk({ len: 150, names: this.names() });
-        else { c.phase = 'lobby'; c.toss = null; this.rdy.clear(); this.afk.clear(); this.s = mk({ len: 150, names: this.names() }); this.unlock(); this.pub(); } // rematch: back to the waiting room
+        if (c.kind === 'quick') this.s = mk({ len: LEN, names: this.names() });
+        else { c.phase = 'lobby'; c.toss = null; this.rdy.clear(); this.afk.clear(); this.s = mk({ len: LEN, names: this.names() }); this.unlock(); this.pub(); } // rematch: back to the waiting room
       }
       return;
     }
-    const inp = s.ps.map((p: any, k: number) => hum.has(k) ? { ...NOACT, ...this.held[k], ...this.latch[k] } : ai(s, k)); // empty slots = AI
+    const inp = s.ps.map((p: any, k: number) => hum.has(k) ? { ...NOACT, ...this.held[k], ...this.latch[k], h: 1 } : ai(s, k)); // empty slots = AI
     step(s, inp, 1 / 60);
     for (const k of hum) this.latch[k] = {};
   }
@@ -127,7 +127,7 @@ class MatchRoom extends Room {
     for (const c of this.clients) { const k = this.slots.get(c.sessionId); if (k !== undefined && this.ready.has(c.sessionId)) c.send('c', calls[k < 5 ? 0 : 1]); } }
   snap() {
     const s = this.s, r = (v: number) => Math.round(v * 10) / 10;
-    return { t: r(s.time), h: s.half, sc: s.score, m: s.msg, k: s.kind, u: s.sub, gt: s.gt, pa: s.pause > 0 ? 1 : 0, ov: s.over ? 1 : 0, o: s.own,
+    return { t: r(s.time), h: s.half, sc: s.score, m: s.msg, k: s.kind, u: s.sub, gt: s.gt, x: s.sc, y: s.as, og: s.og, mn: s.mn, pa: s.pause > 0 ? 1 : 0, ov: s.over ? 1 : 0, o: s.own,
       b: [r(s.ball.x), r(s.ball.y), r(s.ball.vx), r(s.ball.vy), r(s.ball.h)],
       p: s.ps.map((p: any) => [r(p.x), r(p.y), r(p.vx), r(p.vy), +p.fx.toFixed(2), +p.fy.toFixed(2), p.stun > 0 ? 1 : 0, p.sh ? 1 : 0, p.run ? 1 : 0, +p.st.toFixed(2), (p.sl > 0 ? 1 : 0) + (p.kk > 0 ? 2 : 0)]), n: this.nicks };
   }

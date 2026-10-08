@@ -31,3 +31,7 @@ Quick match: 12s countdown then auto-start, bots fill empty slots, late joiners 
 Private room: share the invite link (?room=CODE) or the 5-letter code. Host picks "against each other" or "together vs bots", everyone taps Ready, host starts.
 Humans on both sides -> captains do the heads/tails toss, winner picks the stadium; otherwise the host picks stadium and kits. Room locks at kickoff; after full time it returns to the waiting room.
 A dropped connection keeps your player (a bot covers) for 60s while the client retries.
+
+## Gamepad
+Plug in / pair a controller and press any button. In a match: left stick or d-pad move, X(cross) pass / press / call, Square shoot (hold) / tackle, Triangle through pass, Circle lob / slide, L1 switch, R1 sprint, L2 shield, R2 knock-on, Start = pause menu.
+In menus: d-pad or left stick moves the highlight, X selects, Circle goes back, Start resumes. Touch controls hide while a pad is connected.

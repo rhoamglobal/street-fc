@@ -10,7 +10,7 @@ export async function connect(nick: string, code: string, how: string) {
 export async function reconnect() { const t = sessionStorage.getItem('sfc-token'); if (!client || !t) throw new Error('no token'); const r = await client.reconnect(t); sessionStorage.setItem('sfc-token', r.reconnectionToken); return r; }
 // Server snapshot -> local state. Positions are targets; netTick smooths toward them.
 export function applySnap(s: any, m: any) {
-  s.time = m.t; s.half = m.h; s.score = m.sc; s.msg = m.m; s.pause = m.pa; s.over = !!m.ov; s.own = m.o; s.nicks = m.n; s.kind = m.k; s.sub = m.u; s.gt = m.gt;
+  s.time = m.t; s.half = m.h; s.score = m.sc; s.msg = m.m; s.pause = m.pa; s.over = !!m.ov; s.own = m.o; s.nicks = m.n; s.kind = m.k; s.sub = m.u; s.gt = m.gt; s.sc = m.x; s.as = m.y; s.og = m.og; s.mn = m.mn;
   const first = !s.synced; s.synced = true; const b = s.ball;
   b.tx = m.b[0]; b.ty = m.b[1]; b.vx = m.b[2]; b.vy = m.b[3]; b.h = m.b[4];
   m.p.forEach((a: number[], i: number) => { const p = s.ps[i];

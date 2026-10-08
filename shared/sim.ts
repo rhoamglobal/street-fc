@@ -8,22 +8,36 @@ export const HOME=[[160,.5],[290,.2],[290,.8],[430,.35],[430,.65]]; // no keeper
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function norm(x,y){const m=Math.hypot(x,y)||1;return[x/m,y/m]}
 export function mk(o){o=o||{};const ps=[];for(let t=0;t<2;t++)HOME.forEach((h,i)=>{const hx=t?W-h[0]:h[0],hy=h[1]*H;ps.push({t,i,x:hx,y:hy,hx,hy,vx:0,vy:0,fx:t?-1:1,fy:0,cd:0,stun:0,st:1,sh:false,off:false,pk:0,run:false,sl:0,kk:0,cl:0})});
- const s={ps,ball:{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0},score:[0,0],half:1,pause:2,over:false,msg:'Kickoff',kind:'info',sub:'',gt:-1,freeze:0,taker:-1,gk:-1,gkT:0,fcd:0,names:o.names||['HOME','AWAY'],mode:o.mode||'match',len:o.len||150,diff:o.diff||1,round:1,me:4,own:-1};
+ const s={ps,ball:{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0},score:[0,0],half:1,pause:2,over:false,msg:'Kickoff',kind:'info',sub:'',gt:-1,freeze:0,taker:-1,gk:-1,gkT:0,fcd:0,names:o.names||['HOME','AWAY'],st:ps.map(()=>({g:0,a:0,sh:0,pa:0,pc:0,tk:0,ic:0,fl:0,og:0,hu:0})),poss:[0,0],ev:[],last:-1,prev:-1,pend:-1,po:-1,sc:-1,as:-1,og:0,mn:0,mode:o.mode||'match',len:o.len||150,diff:o.diff||1,round:1,me:4,own:-1};
  s.time=s.len;if(s.mode==='shootout'){s.time=8;skpos(s);s.msg='Round 1'}if(s.mode==='training')s.time=1e9;return s}
 export function skpos(s){s.ps.forEach((p,k)=>{p.off=!(k===s.me||k===5);p.vx=p.vy=0;p.stun=0;p.cd=0});const m=s.ps[s.me],d=s.ps[5];m.x=W*.58;m.y=H/2+(Math.random()-.5)*220;m.fx=1;m.fy=0;d.x=W-230;d.y=H/2;Object.assign(s.ball,{x:m.x+22,y:m.y,vx:0,vy:0});s.own=s.me}
 export function rnd(s,msg,kind){s.round++;if(s.round>5){s.over=true;return}s.time=8;skpos(s);s.msg=msg;s.kind=kind||'info';s.pause=1.6}
-export function reset(s){s.own=-1;s.freeze=0;s.gkT=0;s.ps.forEach(p=>{p.x=p.hx;p.y=p.hy;p.vx=p.vy=0;p.stun=0;p.cd=0});Object.assign(s.ball,{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0})}
-export function goal(s,t){s.gt=t;if(s.mode==='shootout'){if(!t)s.score[0]++;return rnd(s,pick(t?MISS:GOALS),t?'info':'goal')}s.score[t]++;s.msg=pick(GOALS);s.kind='goal';s.sub=s.names[t];reset(s);s.pause=2.4}
+export function reset(s){s.own=-1;s.last=s.prev=s.pend=s.po=-1;s.freeze=0;s.gkT=0;s.ps.forEach(p=>{p.x=p.hx;p.y=p.hy;p.vx=p.vy=0;p.stun=0;p.cd=0});Object.assign(s.ball,{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0})}
+export function goal(s,t){s.gt=t;
+ if(s.mode==='shootout'){if(!t)s.score[0]++;return rnd(s,pick(t?MISS:GOALS),t?'info':'goal')}
+ const k=s.last,og=k>=0&&s.ps[k].t!==t,as=!og&&k>=0&&s.prev>=0&&s.prev!==k&&s.ps[s.prev].t===t?s.prev:-1;
+ const el=s.half===1?s.len-s.time:s.len+(s.len-s.time),mn=Math.max(1,Math.min(90,Math.round(el/(2*s.len)*90)));
+ if(k>=0){if(og)s.st[k].og++;else{s.st[k].g++;if(as>=0)s.st[as].a++}}
+ s.ev.push({t,k,as,og:og?1:0,mn});s.sc=k;s.as=as;s.og=og?1:0;s.mn=mn;
+ s.score[t]++;s.msg=pick(GOALS);s.kind='goal';s.sub=s.names[t];reset(s);s.pause=2.4}
 export function shootDir(p){const[tx,ty]=norm((p.t?0:W)-p.x,H/2-p.y);return norm(p.fx+tx*.6,p.fy+ty*.6)}
 export function pickMate(p,s){let best=null,bs=.5;s.ps.forEach(q=>{if(q.t!==p.t||q===p||q.off)return;const d=Math.hypot(q.x-p.x,q.y-p.y),[nx,ny]=norm(q.x-p.x,q.y-p.y),sc=nx*p.fx+ny*p.fy-d/2500;if(sc>bs){bs=sc;best=q}});return best}
+export function touch(s,k){if(s.last!==k){s.prev=s.last;s.last=k}}
+// Full-time report: team stats, per-player ratings and man of the match
+export function summary(s){const res=s.score[0]>s.score[1]?0:s.score[1]>s.score[0]?1:-1,tot=s.poss[0]+s.poss[1]||1;
+ const rows=s.ps.map((p,k)=>{const x=s.st[k],bonus=res<0?.1:res===p.t?.4:-.2;let r=6+x.g*1.3+x.a*.8+x.sh*.1+x.pc*.05-(x.pa-x.pc)*.05+x.tk*.3+x.ic*.25-x.fl*.4-x.og*.6+bonus;
+  return{k,t:p.t,i:p.i,g:x.g,a:x.a,sh:x.sh,pa:x.pa,pc:x.pc,tk:x.tk,fl:x.fl,hu:x.hu>10?1:0,r:Math.round(Math.max(3,Math.min(10,r))*10)/10}});
+ let mv=rows[0];rows.forEach(r=>{if(r.r>mv.r||(r.r===mv.r&&r.g>mv.g))mv=r});
+ const team=t=>{const q=rows.filter(r=>r.t===t),f=n=>q.reduce((a,r)=>a+r[n],0),pa=f('pa');return{poss:Math.round(s.poss[t]/tot*100),sh:f('sh'),pacc:pa?Math.round(f('pc')/pa*100):0,fl:f('fl')}};
+ return{score:s.score,names:s.names,ev:s.ev,rows,motm:mv.k,team:[team(0),team(1)]}}
 // Set pieces: free kick at the foul spot, or a penalty (defender nearest goal stands in as keeper). Everyone else is pushed back and frozen briefly.
 export function setPiece(s,type,ko){const q=s.ps[ko],t=q.t,d=t?-1:1,gx=t?0:W,pen=type==='pen',b=s.ball;
  const bx=pen?gx-d*140:clamp(q.x,40,W-40),by=pen?H/2:clamp(q.y,40,H-40);
- Object.assign(b,{x:bx,y:by,vx:0,vy:0,h:0,vh:0});q.x=clamp(bx-d*26,R,W-R);q.y=by;q.vx=q.vy=0;q.fx=d;q.fy=0;s.own=ko;s.taker=ko;s.gk=-1;
+ Object.assign(b,{x:bx,y:by,vx:0,vy:0,h:0,vh:0});q.x=clamp(bx-d*26,R,W-R);q.y=by;q.vx=q.vy=0;q.fx=d;q.fy=0;s.pend=-1;s.own=ko;s.taker=ko;s.gk=-1;
  if(pen){let bi=-1,bd=1e9;s.ps.forEach((p,k)=>{if(p.t!==t&&!p.off){const dd=Math.abs(p.x-gx);if(dd<bd){bd=dd;bi=k}}});s.gk=bi;if(bi>=0){const g=s.ps[bi];g.x=gx-d*14;g.y=H/2;g.vx=g.vy=0}s.gkT=4}
  s.ps.forEach((p,k)=>{if(k===ko||k===s.gk||p.off)return;const dx=p.x-bx,dy=p.y-by,m=Math.hypot(dx,dy)||1,mn=pen?220:130;if(m<mn){p.x=clamp(bx+dx/m*mn,R,W-R);p.y=clamp(by+dy/m*mn,R,H-R)}});
  s.pause=2.2;s.freeze=1.6;s.fcd=8}
-export function callFoul(s,fk,fouled){const o=s.ps[fouled],gx=o.t?0:W,box=Math.abs(o.x-gx)<170&&Math.abs(o.y-H/2)<150;
+export function callFoul(s,fk,fouled){s.st[fk].fl++;const o=s.ps[fouled],gx=o.t?0:W,box=Math.abs(o.x-gx)<170&&Math.abs(o.y-H/2)<150;
  s.kind=box?'pen':'foul';s.msg=pick(box?PENS:FOULS);s.sub=(box?'PENALTY - ':'FREE KICK - ')+s.names[o.t];setPiece(s,box?'pen':'fk',fouled)}
 export function step(s,inp,dt){
  if(s.over)return;
@@ -31,7 +45,7 @@ export function step(s,inp,dt){
  s.time-=dt;if(s.freeze>0)s.freeze-=dt;if(s.gkT>0)s.gkT-=dt;s.fcd=Math.max(0,s.fcd-dt);
  if(s.time<=0){if(s.mode==='shootout')return rnd(s,pick(MISS),'info');if(s.half===1){s.half=2;s.time=s.len;s.msg='Half time';reset(s);s.pause=2.5}else{s.time=0;s.over=true}return}
  const b=s.ball;
- s.ps.forEach((p,k)=>{if(p.off)return;p.sl=Math.max(0,p.sl-dt);p.cl=Math.max(0,p.cl-dt);p.kk=Math.max(0,p.kk-dt);if(s.freeze>0&&k!==s.taker&&k!==s.gk){p.vx=p.vy=0;return}const u=inp[k];if(u.call&&s.own>=0&&s.own!==k&&s.ps[s.own].t===p.t)p.cl=1.4,p.ca=u.ai?1:0;p.cd=Math.max(0,p.cd-dt);p.pk=Math.max(0,p.pk-dt);p.stun=Math.max(0,p.stun-dt);
+ s.ps.forEach((p,k)=>{if(p.off)return;p.sl=Math.max(0,p.sl-dt);p.cl=Math.max(0,p.cl-dt);p.kk=Math.max(0,p.kk-dt);if(s.freeze>0&&k!==s.taker&&k!==s.gk){p.vx=p.vy=0;return}const u=inp[k];if(u.h)s.st[k].hu+=dt;if(u.call&&s.own>=0&&s.own!==k&&s.ps[s.own].t===p.t)p.cl=1.4,p.ca=u.ai?1:0;p.cd=Math.max(0,p.cd-dt);p.pk=Math.max(0,p.pk-dt);p.stun=Math.max(0,p.stun-dt);
   let mx=u.mx,my=u.my;let m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}if(u.press&&s.own>=0&&s.ps[s.own].t!==p.t){const c=s.ps[s.own],[ex,ey]=norm(c.x-p.x,c.y-p.y);mx=ex*.8+mx*.4;my=ey*.8+my*.4;m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}} // press: auto-close the carrier
   const run=!!(u.sprint&&p.st>.05&&m>.2),has=s.own===k;p.run=run;p.st=clamp(p.st+(run?-.35:.12)*dt,0,1);p.sh=!!u.shield;
   const sp=(run?250:u.press?215:180)*(has?.93:1)*(p.t?s.diff:1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?7:10));
@@ -44,7 +58,7 @@ export function step(s,inp,dt){
     if(act===1){[ax,ay]=shootDir(p);const e=(Math.random()-.5)*(run?.16:.08)*(1+u.shoot*.8),c=Math.cos(e),sn=Math.sin(e);[ax,ay]=[ax*c-ay*sn,ax*sn+ay*c];pw=480+470*u.shoot}
     else{const t=u.to||pickMate(p,s);let X,Y;if(t){const l=act===5?.9:act===4?.5:.3;X=t.x+t.vx*l;Y=t.y+t.vy*l;if(act===5&&Math.hypot(t.vx,t.vy)<30)X+=(p.t?-1:1)*70}else{X=p.x+p.fx*160;Y=p.y+p.fy*160}
      const dd=Math.hypot(X-p.x,Y-p.y);[ax,ay]=norm(X-p.x,Y-p.y);pw=act===3?clamp(dd*2.4,300,500):act===5?clamp(dd*2.6,380,640):clamp(dd*2.8,420,760);if(act===4)b.vh=Math.min(300,150+dd*.6)}
-    b.vx=ax*pw;b.vy=ay*pw;p.cd=.4;p.pk=.35;p.kk=.25;s.own=-1}
+    b.vx=ax*pw;b.vy=ay*pw;p.cd=.4;p.pk=.35;p.kk=.25;s.own=-1;touch(s,k);s.po=-1;if(act===1){s.st[k].sh++;s.pend=-2}else{s.st[k].pa++;s.pend=k}}
    else if(u.skill){p.cd=1.2;p.vx+=p.fx*320;p.vy+=p.fy*320;if(has){s.own=-1;p.pk=.12;b.vx=p.fx*360;b.vy=p.fy*360}}
    else if(u.slide){p.cd=1.1;p.sl=.5;p.vx+=p.fx*430;p.vy+=p.fy*430;const o=s.own>=0?s.ps[s.own]:null; // slide: long reach, risky, can be a foul
     if(o&&o.t!==p.t&&Math.hypot(o.x-p.x,o.y-p.y)<2*R+48){const won=Math.random()<(o.sh?.3:.75);if(s.mode==='match'&&s.fcd<=0&&Math.random()<(won?.1:.5)){p.stun=.8;callFoul(s,k,s.own);return}if(won){s.own=k;o.stun=.5;o.pk=.6;p.pk=0}else p.stun=.6}else p.stun=.6}
@@ -65,6 +79,11 @@ export function step(s,inp,dt){
   if(bi>=0&&bs<520)s.own=bi;
   else s.ps.forEach(p=>{if(p.off)return;const dx=b.x-p.x,dy=b.y-p.y,d=Math.hypot(dx,dy)||1;if(d<R+BR&&b.h<24){const nx=dx/d,ny=dy/d;b.x=p.x+nx*(R+BR);b.y=p.y+ny*(R+BR);const rel=(b.vx-p.vx)*nx+(b.vy-p.vy)*ny;if(rel<0){b.vx-=rel*nx*1.3;b.vy-=rel*ny*1.3}}});
   b.x+=b.vx*dt;b.y+=b.vy*dt;const f=Math.pow(.3,dt);b.vx*=f;b.vy*=f}
+ if(s.own>=0&&s.own!==s.po){const o=s.own,po=s.po;touch(s,o); // new owner: pass completed / intercepted / tackle won
+  if(s.pend>=0&&o!==s.pend){if(s.ps[s.pend].t===s.ps[o].t)s.st[s.pend].pc++;else s.st[o].ic++}
+  else if(s.pend===-1&&po>=0&&s.ps[po].t!==s.ps[o].t)s.st[o].tk++;
+  s.pend=-1;s.po=o}
+ if(s.own>=0)s.poss[s.ps[s.own].t]+=dt;
  if(b.y<BR){b.y=BR;b.vy*=-.8}if(b.y>H-BR){b.y=H-BR;b.vy*=-.8}
  const gy=Math.abs(b.y-H/2)<GOAL/2;
  if(b.x<BR){if(gy){if(b.x<-4)return goal(s,1)}else{b.x=BR;b.vx*=-.8}}

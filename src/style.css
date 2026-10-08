@@ -62,3 +62,30 @@ button:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .k-goal .pop{color:#c6ff3d;text-shadow:0 4px 0 #0b1226,0 0 28px rgba(198,255,61,.7)}.k-foul .pop{color:#ff4d5e;text-shadow:0 4px 0 #0b1226}.k-pen .pop{color:#ffb020;text-shadow:0 4px 0 #0b1226,0 0 24px rgba(255,176,32,.7)}.k-info .pop{color:#fff;text-shadow:0 3px 0 #0b1226}
 #pwr i{background:linear-gradient(90deg,#c6ff3d,#ff2e88)}#btns [data-k=pass]{border-color:#c6ff3d}
 #menu.ov{background:rgba(11,18,38,.82)}
+
+/* ---- phone fixes: menus scroll, rows never clip, compact in landscape ---- */
+html,body{overscroll-behavior:none}body{touch-action:manipulation}#gl,#zone,#btns{touch-action:none}
+#menu{justify-content:flex-start;-webkit-overflow-scrolling:touch;touch-action:pan-y pan-x}
+#menu>*:first-child{margin-top:auto}#menu>*:last-child{margin-bottom:auto}
+#menu input{user-select:text;-webkit-user-select:text}
+#menu .tm{max-height:none;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;justify-content:flex-start;max-width:96vw;padding-bottom:4px;touch-action:pan-x}
+#menu .tm .chip{flex:0 0 auto;white-space:nowrap}
+@media (max-height:520px){#menu{gap:6px;padding:8px 12px}#menu h2{font-size:26px}#menu small{font-size:11px}#menu .chip{padding:5px 10px;font-size:11px}#menu .go{font-size:16px;padding:8px 22px}#menu .card{width:118px;padding:10px 8px;font-size:16px}#menu .card span{font-size:10px}#menu input{font-size:24px;padding:4px}}
+/* ---- full-time report ---- */
+#menu.sumv{padding:10px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(96vw,780px);text-align:left;font:13px Arial,sans-serif}
+@media (max-width:560px){.sg{grid-template-columns:1fr}}
+.sc{text-align:center;font-family:Impact,"Arial Narrow",Arial,sans-serif}.sc b{font-size:15px}.big{font:900 40px Impact,Arial,sans-serif;color:#c6ff3d;margin:0 8px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 8px;font-size:12px}.two>div:last-child{text-align:right}
+.st{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;gap:6px;margin:4px 0}.st span{font-weight:700;text-align:center}
+.st em{grid-column:1/-1;font-style:normal;font-size:10px;opacity:.7;text-align:center;margin-top:-2px}
+.st i{height:6px;background:#ff2e88;border-radius:3px;overflow:hidden}.st u{display:block;height:100%;background:#c6ff3d}
+.motm{background:rgba(198,255,61,.12);border:1px solid #c6ff3d;border-radius:10px;padding:10px;text-align:center}
+.motm b{display:block;font:900 24px Impact,Arial,sans-serif;color:#c6ff3d}.motm span{display:block;margin:2px 0}
+.rt{margin-top:8px}.rt>div{display:flex;justify-content:space-between;padding:4px 2px;border-bottom:1px solid #ffffff22}.rt b{color:#c6ff3d}
+
+/* ---- gamepad ---- */
+#menu .pf{outline:3px solid #ff2e88;outline-offset:3px;transform:scale(1.05)}
+body.pad #zone,body.pad #btns,body.pad #sw{display:none!important}body.pad #hint{display:block}
+#pt{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#c6ff3d;color:#0b1226;font:800 13px Arial,sans-serif;padding:6px 14px;border-radius:14px;z-index:30;display:none}
+#padhint{position:fixed;bottom:6px;left:50%;transform:translateX(-50%);font:700 11px Arial,sans-serif;color:rgba(255,255,255,.65);z-index:9;display:none}body.pad.inm #padhint{display:block}
