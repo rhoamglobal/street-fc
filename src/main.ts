@@ -53,7 +53,7 @@ function buildField(id){const f=FLD[id]||FLD.street;while(env.children.length)en
 const SK=[0x8d5524,0x5c3a21,0x3b2314,0xa86b3c,0x6f4426];
 const shMat=new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.3}),shGeo=new THREE.CircleGeometry(1,16);
 function blob(sc){const m=new THREE.Mesh(shGeo,shMat);m.rotation.x=-Math.PI/2;m.position.y=.04;m.scale.set(sc,sc,1);scene.add(m);return m}
-let s=mk(),me=4,nick='ODOGWU',inMenu=true;let lob:any=null,online:any=null,lastIn='',lastSend=0;
+let s=mk(),me=4,nick='kazz',inMenu=true;let lob:any=null,online:any=null,lastIn='',lastSend=0;
 const HAIR=[0x111111,0x1a1008,0x2b1b10,0x111111,0x3b2314],NUMS=[4,8,7,11,9];
 const numTex=n=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d');g.font='900 44px Impact,Arial';g.textAlign='center';g.fillStyle='#fff';g.strokeStyle='rgba(0,0,0,.5)';g.lineWidth=4;g.strokeText(n,32,50);g.fillText(n,32,50);return new THREE.CanvasTexture(c)};
 const rigs=s.ps.map((p,k)=>{const g=new THREE.Group(),m={shirt:mat(0xffffff),short:mat(0x222222),sock:mat(0xffffff),skin:mat(SK[k%5]),hair:mat(HAIR[k%5]),boot:mat(0x111111)};
