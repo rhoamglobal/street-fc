@@ -245,6 +245,11 @@ function wire(room:any){online=room;shown='';resetNet();const pi=setInterval(()=
 async function goOnline(code:string,how:string){const e:any=document.getElementById('oe')||{};e.textContent='Connecting...';
  try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}
  catch(x){if(!document.getElementById('oe'))show('online');e.textContent=how==='join'?'Room not found, or the match already started.':'Could not connect. Is the server running?'}}
-function sendIn(o:any,t:number){const j=JSON.stringify(o);if(j!==lastIn||t-lastSend>100||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
+function sendIn(o:any,t:number){const j=JSON.stringify(o);
+ // Send changed input immediately, and refresh held input at 30 Hz so packet loss doesn't leave stale controls.
+ if(j!==lastIn||t-lastSend>=33||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
 if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s},get me(){return me},net}; // debug hook for automated screenshots (only with ?debug)
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+ navigator.serviceWorker.register('/sw.js').catch(err => console.warn('PWA service worker registration failed:', err));
+}
 requestAnimationFrame(loop);

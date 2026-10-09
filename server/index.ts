@@ -97,7 +97,8 @@ class MatchRoom extends Room {
       if (c.phase !== 'play') return;
       acc += Math.min(ms, 100) / 1000; snap += ms;
       while (acc >= 1 / 60) { this.tick(); acc -= 1 / 60; }
-      if (snap >= 50) { snap = 0; const sn = this.snap(); later(() => this.broadcast('s', sn)); later(() => this.sendCalls()); }
+      // Publish at ~30 Hz: responsive enough for football movement without flooding bandwidth.
+      if (snap >= 33) { snap %= 33; const sn = this.snap(); later(() => this.broadcast('s', sn)); later(() => this.sendCalls()); }
     }, 1000 / 60);
   }
   tick() {

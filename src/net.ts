@@ -2,7 +2,7 @@ import { Client } from 'colyseus.js';
 import { moveStep } from '../shared/sim';
 let client: any;
 // net.rtt: smoothed round trip (ms). net.pp: locally predicted state of YOUR player. net.buf: recent snapshots for interpolation.
-export const net: any = { rtt: 0, pp: null, buf: [], INTERP: 100, predict: !location.search.includes('nopredict') };
+export const net: any = { rtt: 0, jitter: 0, lastSnapAt: 0, pp: null, buf: [], INTERP: 110, predict: !location.search.includes('nopredict') };
 export async function connect(nick: string, code: string, how: string) {
   const url = (import.meta as any).env?.VITE_SERVER_URL || `ws://${location.hostname}:2567`; client = new Client(url);
   const o = { nick, code, kind: how === 'quick' ? 'quick' : 'private' };
@@ -11,9 +11,14 @@ export async function connect(nick: string, code: string, how: string) {
   return room;
 }
 export async function reconnect() { const t = sessionStorage.getItem('sfc-token'); if (!client || !t) throw new Error('no token'); const r = await client.reconnect(t); sessionStorage.setItem('sfc-token', r.reconnectionToken); return r; }
-export function resetNet() { net.buf.length = 0; net.pp = null; }
+export function resetNet() { net.buf.length = 0; net.pp = null; net.jitter = 0; net.lastSnapAt = 0; }
 export function applySnap(s: any, m: any, me: number) {
-  net.buf.push({ t: performance.now(), p: m.p, b: m.b }); while (net.buf.length > 14) net.buf.shift();
+  const receivedAt = performance.now();
+  if (net.lastSnapAt) { const gap = receivedAt - net.lastSnapAt; net.jitter = net.jitter ? net.jitter * .85 + Math.abs(gap - 33.3) * .15 : Math.abs(gap - 33.3); }
+  net.lastSnapAt = receivedAt;
+  // Buffer enough history to absorb ordinary packet jitter. Adapt modestly to slower links.
+  net.INTERP = Math.max(100, Math.min(220, 90 + net.rtt * .22 + net.jitter * 2));
+  net.buf.push({ t: receivedAt, p: m.p, b: m.b }); while (net.buf.length > 24) net.buf.shift();
   s.time = m.t; s.half = m.h; s.score = m.sc; s.msg = m.m; s.pause = m.pa; s.over = !!m.ov; s.own = m.o; if (m.n) s.nicks = m.n;
   s.kind = m.k; s.sub = m.u; s.gt = m.gt; s.sc = m.x; s.as = m.y; s.og = m.og; s.mn = m.mn; s.freeze = m.z; s.taker = m.tk; s.gk = m.gk;
   const b = s.ball; b.vx = m.b[2]; b.vy = m.b[3]; b.h = m.b[4];
