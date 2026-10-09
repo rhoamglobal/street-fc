@@ -132,14 +132,13 @@ let shown='',last=performance.now(),acc=0,loaded=false;
 // ===== SOUND (synthesised, no files) + VIBRATION =====
 const AU:any={ctx:null,on:localStorage.getItem('sfc-snd')!=='0'};
 function audioInit(){if(AU.ctx){AU.ctx.resume&&AU.ctx.resume();return}const C=(window as any).AudioContext||(window as any).webkitAudioContext;if(!C)return;const x=new C();AU.ctx=x;AU.m=x.createGain();AU.m.gain.value=.55;AU.m.connect(x.destination);
- const n=x.sampleRate*2,b=x.createBuffer(1,n,x.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;AU.nb=b;
- const src=x.createBufferSource();src.buffer=b;src.loop=true;const f=x.createBiquadFilter();f.type='bandpass';f.frequency.value=520;f.Q.value=.35;AU.cg=x.createGain();AU.cg.gain.value=.045;src.connect(f);f.connect(AU.cg);AU.cg.connect(AU.m);src.start()}
+ const n=x.sampleRate*2,b=x.createBuffer(1,n,x.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;AU.nb=b}
 ['pointerdown','keydown','touchstart'].forEach(e=>addEventListener(e,audioInit,{once:true,passive:true}));
 function tone(f0:number,f1:number,dur:number,type:any,vol:number,delay=0){if(!AU.ctx||!AU.on)return;const x=AU.ctx,t=x.currentTime+delay,o=x.createOscillator(),g=x.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(AU.m);o.start(t);o.stop(t+dur+.02)}
 function burst(dur:number,freq:number,vol:number,delay=0){if(!AU.ctx||!AU.on)return;const x=AU.ctx,t=x.currentTime+delay,s0=x.createBufferSource(),f=x.createBiquadFilter(),g=x.createGain();s0.buffer=AU.nb;f.type='lowpass';f.frequency.value=freq;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s0.connect(f);f.connect(g);g.connect(AU.m);s0.start(t,Math.random());s0.stop(t+dur)}
 const sfx:any={kick:()=>{tone(170,55,.12,'sine',.5);burst(.05,900,.25)},tackle:()=>{burst(.16,500,.5);tone(90,40,.18,'sine',.45)},click:()=>tone(660,880,.05,'square',.08),
  whistle:()=>{tone(2300,2200,.35,'sine',.18);tone(2310,2210,.35,'sine',.12,.4)},step:()=>{tone(520,780,.12,'triangle',.22);tone(780,1040,.14,'triangle',.22,.12)},
- goal:()=>{if(AU.cg&&AU.ctx&&AU.on){const g=AU.cg.gain,t=AU.ctx.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(.22,t+.4);g.linearRampToValueAtTime(.045,t+4.5)}sfx.whistle();burst(1.6,1800,.25)}};
+ goal:()=>{sfx.whistle();burst(1.6,1800,.25)}};
 const vib=(p:any)=>{if(AU.on&&navigator.vibrate)navigator.vibrate(p)};
 const sndBtn=document.createElement('button');sndBtn.id='snd';sndBtn.textContent=AU.on?'Sound on':'Muted';document.body.appendChild(sndBtn);
 sndBtn.onclick=()=>{AU.on=!AU.on;try{localStorage.setItem('sfc-snd',AU.on?'1':'0')}catch(e){}sndBtn.textContent=AU.on?'Sound on':'Muted';audioInit();sfx.click()};
