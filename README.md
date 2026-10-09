@@ -43,3 +43,8 @@ Online, the camera follows your own player. Passes: tap Pass for an assisted pas
 
 ## Lag
 Online play predicts your own movement locally, interpolates everyone else ~100ms in the past, shows ping (top-left), and lowers render resolution on slow phones. Dev tools: run the server with LAG=100 to fake ~200ms round trip; add ?nopredict to the page URL to compare without prediction.
+
+## Wow + retention features
+Sound (synthesised, toggle top-left or in the main menu) and vibration on goals/tackles; install as an app (manifest + service worker; needs HTTPS, so use the Vercel URL; on iPhone use Share > Add to Home Screen);
+guided tutorial on first play (Training mode); slow-motion goal replays (Skip button); Street Cup (QF, SF, Final vs Nigerian clubs, saved on the phone; draws go to a golden goal, then a coin toss);
+career stats saved on the phone (played, won, goals, man of the match, cups). Accounts + a shared leaderboard need a backend (Supabase) - not built yet.

@@ -86,13 +86,13 @@ let cx=0,cz=0,tt=0;
 function render(dt){tt+=dt;
  s.ps.forEach((p,k)=>{const r=rigs[k],sp=Math.hypot(p.vx,p.vy);r.g.visible=r.sh.visible=!p.off;r.g.position.set((p.x-W/2)*K,0,(p.y-H/2)*K);
   let da=Math.atan2(p.fx,p.fy)-r.ang;da=Math.atan2(Math.sin(da),Math.cos(da));r.ang+=da*Math.min(1,dt*14);r.g.rotation.y=r.ang;
-  r.ph+=sp*dt*.09;const w=Math.sin(r.ph)*.9*Math.min(1,sp/150),cel=s.kind==='goal'&&s.pause>0&&p.t===s.gt;
+  r.ph+=sp*dt*.09;const w=Math.sin(r.ph)*.9*Math.min(1,sp/150),cel=!rep&&s.kind==='goal'&&s.pause>0&&p.t===s.gt;
   r.legs[0].rotation.x=w+(p.kk>0?-1.2:0);r.legs[1].rotation.x=-w;r.arms[0].rotation.x=cel?-2.8:-w*.9;r.arms[1].rotation.x=cel?-2.8:w*.9;
   r.body.rotation.x=p.sl>0?-1.1:Math.min(.4,sp/500);r.g.rotation.z=p.stun>0?.5:0;r.g.position.y=(p.sl>0?-.7:0)+(cel?Math.abs(Math.sin(tt*10+k))*1.1:0);
   r.sh.position.x=r.g.position.x;r.sh.position.z=r.g.position.z});
  const b=s.ball,bx=(b.x-W/2)*K,bz=(b.y-H/2)*K;ballM.position.set(bx,.55+b.h*K,bz);ballM.rotation.z-=b.vx*dt*K/.55;ballM.rotation.x+=b.vy*dt*K/.55;ballSh.position.set(bx,.04,bz);ballSh.scale.setScalar(.6/(1+b.h*.02));
  const mg=rigs[me].g.position;mark.position.set(mg.x,5+Math.sin(tt*5)*.25,mg.z);tagsUpdate();
- const k=1.2*Math.max(1,1.9/cam.aspect);const fx0=online?mg.x:bx,fz0=online?mg.z:bz; // online: the camera follows YOUR player, not the ball
+ const k=1.2*Math.max(1,1.9/cam.aspect);const fx0=online&&!rep?mg.x:bx,fz0=online&&!rep?mg.z:bz; // online: the camera follows YOUR player, not the ball
  cx+=(clamp(fx0,-30,30)-cx)*Math.min(1,dt*(online?4:3));cz+=(fz0*(online?.7:.5)-cz)*Math.min(1,dt*3);
  cam.position.set(cx,30*k,cz+26*k);cam.lookAt(cx,0,cz);ren.render(scene,cam)}
 function resize(){ren.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',resize);resize();
@@ -129,6 +129,77 @@ function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own
 const portrait=()=>matchMedia('(orientation:portrait) and (pointer:coarse)').matches;
 function lockLand(){const e=document.documentElement;try{(e.requestFullscreen?e.requestFullscreen():Promise.reject()).then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}catch(x){}}
 let shown='',last=performance.now(),acc=0,loaded=false;
+// ===== SOUND (synthesised, no files) + VIBRATION =====
+const AU:any={ctx:null,on:localStorage.getItem('sfc-snd')!=='0'};
+function audioInit(){if(AU.ctx){AU.ctx.resume&&AU.ctx.resume();return}const C=(window as any).AudioContext||(window as any).webkitAudioContext;if(!C)return;const x=new C();AU.ctx=x;AU.m=x.createGain();AU.m.gain.value=.55;AU.m.connect(x.destination);
+ const n=x.sampleRate*2,b=x.createBuffer(1,n,x.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;AU.nb=b;
+ const src=x.createBufferSource();src.buffer=b;src.loop=true;const f=x.createBiquadFilter();f.type='bandpass';f.frequency.value=520;f.Q.value=.35;AU.cg=x.createGain();AU.cg.gain.value=.045;src.connect(f);f.connect(AU.cg);AU.cg.connect(AU.m);src.start()}
+['pointerdown','keydown','touchstart'].forEach(e=>addEventListener(e,audioInit,{once:true,passive:true}));
+function tone(f0:number,f1:number,dur:number,type:any,vol:number,delay=0){if(!AU.ctx||!AU.on)return;const x=AU.ctx,t=x.currentTime+delay,o=x.createOscillator(),g=x.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(AU.m);o.start(t);o.stop(t+dur+.02)}
+function burst(dur:number,freq:number,vol:number,delay=0){if(!AU.ctx||!AU.on)return;const x=AU.ctx,t=x.currentTime+delay,s0=x.createBufferSource(),f=x.createBiquadFilter(),g=x.createGain();s0.buffer=AU.nb;f.type='lowpass';f.frequency.value=freq;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s0.connect(f);f.connect(g);g.connect(AU.m);s0.start(t,Math.random());s0.stop(t+dur)}
+const sfx:any={kick:()=>{tone(170,55,.12,'sine',.5);burst(.05,900,.25)},tackle:()=>{burst(.16,500,.5);tone(90,40,.18,'sine',.45)},click:()=>tone(660,880,.05,'square',.08),
+ whistle:()=>{tone(2300,2200,.35,'sine',.18);tone(2310,2210,.35,'sine',.12,.4)},step:()=>{tone(520,780,.12,'triangle',.22);tone(780,1040,.14,'triangle',.22,.12)},
+ goal:()=>{if(AU.cg&&AU.ctx&&AU.on){const g=AU.cg.gain,t=AU.ctx.currentTime;g.cancelScheduledValues(t);g.setValueAtTime(g.value,t);g.linearRampToValueAtTime(.22,t+.4);g.linearRampToValueAtTime(.045,t+4.5)}sfx.whistle();burst(1.6,1800,.25)}};
+const vib=(p:any)=>{if(AU.on&&navigator.vibrate)navigator.vibrate(p)};
+const sndBtn=document.createElement('button');sndBtn.id='snd';sndBtn.textContent=AU.on?'Sound on':'Muted';document.body.appendChild(sndBtn);
+sndBtn.onclick=()=>{AU.on=!AU.on;try{localStorage.setItem('sfc-snd',AU.on?'1':'0')}catch(e){}sndBtn.textContent=AU.on?'Sound on':'Muted';audioInit();sfx.click()};
+const pk:number[]=Array(10).fill(0),psl:number[]=Array(10).fill(0);let pGoal=false,pFoul=false,pOver=false,pOwnT=-1;
+function sfxWatch(){if(!AU.ctx||!AU.on)return;
+ s.ps.forEach((p:any,k:number)=>{const a=p.kk>0?1:0,b=p.sl>0?1:0;if(a&&!pk[k]){sfx.kick();if(k===me)vib(12)}if(b&&!psl[k]){sfx.tackle();if(k===me)vib(35)}pk[k]=a;psl[k]=b});
+ const ot=s.own>=0?s.ps[s.own].t:-1;if(ot>=0){if(pOwnT>=0&&ot!==pOwnT){sfx.tackle();if(s.own===me)vib(30)}pOwnT=ot}
+ const g=s.kind==='goal'&&s.pause>0&&s.msg&&s.msg!=='Kickoff';if(g&&!pGoal){sfx.goal();vib(s.gt===s.ps[me].t?[80,40,200]:[60])}pGoal=g;
+ const f=(s.kind==='foul'||s.kind==='pen')&&s.pause>0;if(f&&!pFoul){sfx.whistle();vib(70)}pFoul=f;
+ if(s.over&&!pOver){sfx.whistle();sfx.whistle()}pOver=s.over}
+// ===== INSTALL AS AN APP (PWA) =====
+let deferredInstall:any=null;addEventListener('beforeinstallprompt',(e:any)=>{e.preventDefault();deferredInstall=e});
+const standalone=matchMedia('(display-mode: standalone)').matches||(navigator as any).standalone;
+if('serviceWorker' in navigator&&(import.meta as any).env?.PROD)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+// ===== CAREER (saved on this phone) =====
+const career:any=(()=>{try{return JSON.parse(localStorage.getItem('sfc-career')||'')}catch(e){return null}})()||{m:0,w:0,d:0,l:0,g:0,a:0,motm:0,cups:0};
+const saveCar=()=>{try{localStorage.setItem('sfc-career',JSON.stringify(career))}catch(e){}};
+function recordMatch(d:any){const rows=online?(d.rows[me]?[d.rows[me]]:[]):d.rows.filter((r:any)=>r.hu&&r.t===0);if(online&&!rows.length)return;const t=online?rows[0].t:0;
+ career.m++;const gf=d.score[t],ga=d.score[1-t];if(gf>ga)career.w++;else if(gf===ga)career.d++;else career.l++;
+ rows.forEach((r:any)=>{career.g+=r.g;career.a+=r.a;if(d.rows[d.motm]&&d.rows[d.motm].k===r.k)career.motm++});saveCar()}
+// ===== STREET CUP: quarter-final, semi-final, final (progress saved) =====
+let cup:any=(()=>{try{return JSON.parse(localStorage.getItem('sfc-cup')||'')}catch(e){return null}})();let curCup:any=null;
+const saveCup=()=>{try{cup?localStorage.setItem('sfc-cup',JSON.stringify(cup)):localStorage.removeItem('sfc-cup')}catch(e){}};
+const RND=['Quarter-final','Semi-final','Final'],RD=[.9,1,1.12];
+function cupNew(){const t=cfg.teams[0],pool=TEAMS.map((_:any,i:number)=>i).filter((i:number)=>i!==t).sort(()=>Math.random()-.5).slice(0,3);cup={team:t,opps:pool,round:0,out:false};saveCup();show('cup')}
+function cupScreen(){const m=$('menu');
+ if(cup.round>=3){m.innerHTML=`<h2>Champions!</h2><div class="big">&#127942;</div><small>${TEAMS[cup.team].n} won the Street Cup</small><div class="row"><button class="go" id="cn">New cup</button><button class="chip" data-to="modes">Menu</button></div>`;return}
+ if(cup.out){m.innerHTML=`<h2>Knocked out</h2><small>${RND[cup.round]} - lost to ${TEAMS[cup.opps[cup.round]].n}</small><div class="row"><button class="go" id="cr">Try again</button><button class="chip" data-to="modes">Menu</button></div>`;return}
+ m.innerHTML=`<h2>Street Cup</h2><div class="stp" style="grid-template-columns:repeat(3,1fr)">${[0,1,2].map(i=>{const T=TEAMS[cup.opps[i]];return`<div class="sp${i<cup.round?' off':''}"><small class="lb">${RND[i]}</small><div class="c2">${jersey(T.c,T.s)}<b>${T.n}</b><span>${i<cup.round?'won':i===cup.round?'next match':'locked'}</span></div></div>`}).join('')}</div><div class="row"><button class="go" id="cg">Play ${RND[cup.round]}</button><button class="chip" id="cn">Restart cup</button><button class="chip" data-to="modes">Menu</button></div>`}
+function cupPlay(){cfg.teams=[cup.team,cup.opps[cup.round]];curCup={golden:false};start({mode:'match',len:90,diff:RD[cup.round]})}
+function cupAfter(){const win=s.score[0]>s.score[1],draw=s.score[0]===s.score[1];
+ if(curCup&&!curCup.golden&&draw){curCup={golden:true};start({mode:'match',len:60,diff:RD[cup.round],golden:true});return}
+ let won=win;if(draw){won=Math.random()<.5;flash('Still level - decided on a coin toss')}
+ curCup=null;if(won){cup.round++;if(cup.round>=3){career.cups++;saveCar()}}else cup.out=true;saveCup();show('cup')}
+// ===== GUIDED TUTORIAL (Training mode) =====
+let tut:any=null;const tutEl=document.createElement('div');tutEl.id='tut';document.body.appendChild(tutEl);
+const isTouch=matchMedia('(pointer:coarse)').matches;
+const lab=(a:string):string=>{const P:any={pass:'X (cross)',shoot:'Square',sprint:'R1',move:'the left stick'},T:any={pass:'the Pass button',shoot:'the Shoot button',sprint:'Sprint',move:'the left half of the screen as a stick'},K:any={pass:'E',shoot:'Space',sprint:'Shift',move:'W A S D'};return document.body.classList.contains('pad')?P[a]:isTouch?T[a]:K[a]};
+const teamSum=(k:string)=>s.st.slice(0,5).reduce((a:number,x:any)=>a+x[k],0);
+const TUT=[{t:()=>`Run: use ${lab('move')} to move around`,ok:()=>tut.dist>160},{t:()=>`Sprint: hold ${lab('sprint')} while you run`,ok:()=>tut.spr>1.2},
+ {t:()=>`Pass: press ${lab('pass')} to pass to a teammate`,ok:()=>teamSum('pa')>tut.pa0},{t:()=>`Shoot: hold ${lab('shoot')}, release to shoot. Longer hold = harder shot`,ok:()=>teamSum('sh')>tut.sh0},{t:()=>`Now score a goal!`,ok:()=>s.score[0]>=1}];
+function tutShow(){if(!tut){tutEl.style.display='none';return}tutEl.style.display='block';tutEl.innerHTML=tut.done?`<b>You're ready!</b> Open Menu and play a match.`:`<b>Step ${tut.i+1}/${TUT.length}</b> ${TUT[tut.i].t()}`}
+function tutStart(){tut={i:0,dist:0,spr:0,pa0:teamSum('pa'),sh0:teamSum('sh'),done:false};tutShow()}
+function tutWatch(dt:number,hu:any){if(!tut||tut.done||s.mode!=='training')return;const p=s.ps[me],v=Math.hypot(p.vx,p.vy);tut.dist+=v*dt;if(hu&&hu.sprint&&v>150)tut.spr+=dt;
+ if(TUT[tut.i].ok()){tut.i++;sfx.step();vib(25);flash('Nice!');if(tut.i>=TUT.length){tut.done=true;try{localStorage.setItem('sfc-tut','1')}catch(e){}}tutShow()}}
+// ===== GOAL REPLAY (slow motion, client side) =====
+const REC:any[]=[];let recT=0,rep:any=null,repSaved:any=null,repBall:any=null,repArm=false,repAt=0,repDone=false;
+const repEl=document.createElement('div');repEl.id='rep';repEl.innerHTML='<i></i>REPLAY <button id="repskip">Skip</button>';document.body.appendChild(repEl);
+(repEl.querySelector('#repskip') as any).onclick=()=>{rep=null;repDone=true};
+function recFrame(now:number){if(rep||s.pause>0||inMenu||s.over||now-recT<33)return;recT=now;REC.push({t:now,p:s.ps.map((p:any)=>[p.x,p.y,p.fx,p.fy,p.vx,p.vy,p.sl,p.kk,p.stun]),b:[s.ball.x,s.ball.y,s.ball.h]});while(REC.length&&now-REC[0].t>3000)REC.shift()}
+function repTick(now:number){const g=s.kind==='goal'&&s.pause>0&&s.mode==='match'&&!s.over;
+ if(g&&!repArm){repArm=true;repAt=now+1500;repDone=false}if(!g){repArm=false;if(rep)rep=null}
+ if(g&&!rep&&!repDone&&now>=repAt&&REC.length>12){const last=REC[REC.length-1].t;rep={f:REC.filter(f=>f.t>last-2400),t0:now}}
+ repEl.style.display=rep?'flex':'none';if(!rep)return;
+ const F=rep.f,e=(now-rep.t0)*.65,span=F[F.length-1].t-F[0].t;if(e>=span){rep=null;repDone=true;repEl.style.display='none';return}
+ let i=0;while(i<F.length-1&&F[i+1].t-F[0].t<=e)i++;const A=F[i],B=F[Math.min(i+1,F.length-1)],sp=B.t-A.t,f=sp>0?Math.min(1,(F[0].t+e-A.t)/sp):0;
+ repSaved=s.ps.map((p:any)=>[p.x,p.y,p.fx,p.fy,p.vx,p.vy,p.sl,p.kk,p.stun]);repBall=[s.ball.x,s.ball.y,s.ball.h];
+ s.ps.forEach((p:any,k:number)=>{const a=A.p[k],b=B.p[k];p.x=a[0]+(b[0]-a[0])*f;p.y=a[1]+(b[1]-a[1])*f;p.fx=a[2];p.fy=a[3];p.vx=a[4];p.vy=a[5];p.sl=a[6];p.kk=a[7];p.stun=0});
+ s.ball.x=A.b[0]+(B.b[0]-A.b[0])*f;s.ball.y=A.b[1]+(B.b[1]-A.b[1])*f;s.ball.h=A.b[2]}
+function repRestore(){if(!repSaved)return;s.ps.forEach((p:any,k:number)=>{const a=repSaved[k];p.x=a[0];p.y=a[1];p.fx=a[2];p.fy=a[3];p.vx=a[4];p.vy=a[5];p.sl=a[6];p.kk=a[7];p.stun=a[8]});s.ball.x=repBall[0];s.ball.y=repBall[1];s.ball.h=repBall[2];repSaved=null}
 let curScreen='',padUsed=false,padPrev:any={},padT=0,padKeep='';
 // ===== GAMEPAD IN MENUS: d-pad / left stick moves the highlight, A (cross) selects, B (circle) goes back, Start resumes =====
 const padEls=()=>[...document.querySelectorAll('#menu button:not([disabled]),#menu input')].filter((e:any)=>e.offsetParent!==null);
@@ -164,18 +235,18 @@ const POOL=['Chidi','Tunde','Emeka','Musa','Bashir','Segun','Ifeanyi','Yusuf','K
 const nm=(k:number,h?:any)=>online?((s.nicks&&s.nicks[k])||POOL[k%10]):(h?nick:POOL[k%10]); // humans by name, bots by pool name
 function showSummary(){const m=$('menu');inMenu=true;m.className='sumv';
  if(s.mode!=='match'){m.innerHTML=`<h2>${s.mode==='shootout'?'Shootout':'Training'}</h2><div class="big">${s.score[0]}${s.mode==='shootout'?' / 5':''}</div>`+(online?'':`<div class="row"><button class="go" id="rs">Play again</button><button class="chip" id="mn">Menu</button></div>`);return}
- const d=online?sumData:summary(s);if(!d)return;
+ const d=online?sumData:summary(s);if(!d)return;const rk:any=online?d:s;if(!rk.rec){rk.rec=1;recordMatch(d)}
  const hu=(k:number)=>d.rows[k]&&d.rows[k].hu,N=(k:number)=>nm(k,hu(k)),T=d.names;
  const sc=[0,1].map(t=>d.ev.filter((e:any)=>e.t===t).map((e:any)=>`<div>${e.mn}' ${e.k>=0?N(e.k):''}${e.og?' (OG)':''}${e.as>=0?` <small>(${N(e.as)})</small>`:''}</div>`).join('')||'<div><small>-</small></div>');
  const bar=(l:string,a:number,b:number)=>{const p=a+b?a/(a+b)*100:50;return`<div class="st"><span>${a}</span><i><u style="width:${p}%"></u></i><span>${b}</span><em>${l}</em></div>`};
  const tm=d.team,mv=d.rows[d.motm],top=d.rows.slice().sort((a:any,b:any)=>b.r-a.r).slice(0,5);
  m.innerHTML=`<div class="sg"><div><div class="sc"><b>${T[0]}</b> <span class="big">${d.score[0]} - ${d.score[1]}</span> <b>${T[1]}</b></div><div class="two"><div>${sc[0]}</div><div>${sc[1]}</div></div>${bar('Possession %',tm[0].poss,tm[1].poss)}${bar('Shots',tm[0].sh,tm[1].sh)}${bar('Pass accuracy %',tm[0].pacc,tm[1].pacc)}${bar('Fouls',tm[0].fl,tm[1].fl)}</div>
- <div><div class="motm"><small>MAN OF THE MATCH</small><b>${N(mv.k)}</b><span>${T[mv.t]} - rated ${mv.r.toFixed(1)}</span><small>${mv.g} goal${mv.g===1?'':'s'}, ${mv.a} assist${mv.a===1?'':'s'}, ${mv.tk} tackle${mv.tk===1?'':'s'}</small></div><div class="rt">${top.map((r:any)=>`<div><span>${N(r.k)} <small>${T[r.t]}</small></span><b>${r.r.toFixed(1)}</b></div>`).join('')}</div></div></div>`+(online?`<small>Back to the waiting room shortly...</small><button class="chip" id="lv">Leave</button>`:`<div class="row"><button class="go" id="rs">Play again</button><button class="chip" id="mn">Menu</button></div>`)}
+ <div><div class="motm"><small>MAN OF THE MATCH</small><b>${N(mv.k)}</b><span>${T[mv.t]} - rated ${mv.r.toFixed(1)}</span><small>${mv.g} goal${mv.g===1?'':'s'}, ${mv.a} assist${mv.a===1?'':'s'}, ${mv.tk} tackle${mv.tk===1?'':'s'}</small></div><div class="rt">${top.map((r:any)=>`<div><span>${N(r.k)} <small>${T[r.t]}</small></span><b>${r.r.toFixed(1)}</b></div>`).join('')}</div></div></div>`+(online?`<small>Back to the waiting room shortly...</small><button class="chip" id="lv">Leave</button>`:(curCup?`<div class="row"><button class="go" id="cc">Continue</button></div>`:`<div class="row"><button class="go" id="rs">Play again</button><button class="chip" id="mn">Menu</button></div>`))}
 const lb=(k,t)=>{document.querySelector('[data-k='+k+'] small').textContent=t};
 function ui(){const opp=s.own>=0&&s.ps[me]&&s.ps[s.own].t!==s.ps[me].t;const md=opp?1:(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t)?2:0;if(md!==lastOpp){lastOpp=md;lb('pass',['Pass','Press','Call'][md]);lb('shoot',opp?'Tackle':'Shoot');lb('lob',opp?'Slide':'Lob');lb('thru',opp?'-':'Through')}const sh=s.mode==='shootout',tr=s.mode==='training',m=Math.max(0,Math.ceil(s.time));$('sa').textContent=s.score[0];$('sb').textContent=s.score[1];
- $('tm').textContent=tr?'FREE':Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('hf').textContent=sh?'ROUND '+Math.min(s.round,5)+' OF 5':tr?'TRAINING':s.half===1?'1ST HALF':'2ND HALF';
+ $('tm').textContent=tr?'FREE':Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('hf').textContent=sh?'ROUND '+Math.min(s.round,5)+' OF 5':tr?'TRAINING':s.golden?'GOLDEN GOAL':s.half===1?'1ST HALF':'2ND HALF';
  $('toast').style.display=s.pause>0&&s.msg==='Kickoff'?'block':'none';
- const txt=s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg);let sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
+ const txt=rep?'':s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg);let sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
  if(!s.over&&s.kind==='goal'&&s.pause>0&&s.sc>=0&&s.mode==='match')sub=`${nm(s.sc,s.st&&s.st[s.sc]&&s.st[s.sc].hu>10)}${s.og?' (OG)':''} ${s.mn}'${s.as>=0?' - assist '+nm(s.as,s.st&&s.st[s.as]&&s.st[s.as].hu>10):''} - ${s.sub}`;
  const key=txt+'|'+sub+'|'+s.kind+s.over;
  if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`:''}
@@ -183,10 +254,12 @@ function ui(){const opp=s.own>=0&&s.ps[me]&&s.ps[s.own].t!==s.ps[me].t;const md=
 // ===== APP FLOW: name -> modes -> settings -> match =====
 const roomParam=new URLSearchParams(location.search).get('room');let roomUsed=false;const cfg={len:150,diff:1,field:'street',teams:[0,2]},CH=['KAZZ','Sharp Boy','Jagaban','Small Pele','Oga Striker','Zaki','Baller','Golden Boy'];
 const chips=(a,key,cur)=>a.map(([v,l])=>`<button class="chip${cur===v?' on':''}" data-${key}="${v}">${l}</button>`).join('');
-function show(n){curScreen=n;inMenu=true;const m=$('menu');m.className='';
+function show(n){curScreen=n;inMenu=true;if(n==='modes'){curCup=null;tut=null;tutShow()}const m=$('menu');m.className='';
  if(n==='name')m.innerHTML=`<small>GUEST PLAYER</small><h2>Pick your street name</h2><input id="ni" maxlength="14" placeholder="KAZZ" value="${nick}" aria-label="Nickname"><div class="row">${CH.map(c=>`<button class="chip" data-n="${c}">${c}</button>`).join('')}</div><small>This shows above your player.</small><button class="go" id="gn">Continue</button>`;
  else if(n==='online')m.innerHTML=`<h2>Play online</h2><div class="row"><button class="card" id="oq">Quick match<span>Starts automatically, bots fill in</span></button><button class="card" id="op">Private room<span>Play with friends</span></button></div><small>Got a room code?</small><input id="oc" maxlength="6" placeholder="CODE" aria-label="Room code"><div class="row"><button class="go" id="oj">Join room</button></div><small id="oe"></small><button class="chip" data-to="modes">Back</button>`;
- else if(n==='modes')m.innerHTML=`<small>Playing as ${nick}</small><h2>Pick your game</h2><div class="row"><button class="card" id="qm">Quick match<span>5v5 vs CPU, two halves</span></button><button class="card" id="tr">Training<span>Free play, no clock</span></button><button class="card" id="so">Shootout<span>5 rounds, beat the defender</span></button><button class="card" id="ol">Play online<span>Live match with friends</span></button></div><button class="chip" data-to="name">Change name</button>`;
+ else if(n==='modes')m.innerHTML=`<small>${career.m?`Played ${career.m} - Won ${career.w} - Goals ${career.g} - Man of the match ${career.motm}${career.cups?' - Cups '+career.cups:''}`:'Welcome, '+nick}</small><h2>Pick your game</h2><div class="row"><button class="card" id="qm">Quick match<span>5v5 vs CPU</span></button><button class="card" id="cp">Street Cup<span>Win 3 matches, lift the trophy</span></button><button class="card" id="tr">Training<span>Learn the moves</span></button><button class="card" id="so">Shootout<span>5 rounds vs a defender</span></button><button class="card" id="ol">Play online<span>Live match with friends</span></button></div><div class="row"><button class="chip" data-to="name">Change name</button><button class="chip" id="sndm">Sound: ${AU.on?'on':'off'}</button>${standalone?'':'<button class="chip" id="inst">Install app</button>'}</div>`;
+ else if(n==='cupsetup')m.innerHTML=`<h2>Street Cup</h2><small>Pick your club, then win the quarter-final, semi-final and final.</small><div class="stp" style="grid-template-columns:1fr">${spTeam('t0',cfg.teams[0],[cfg.teams[0],(cfg.teams[0]+1)%TEAMS.length],1,'Your club')}</div><div class="row"><button class="go" id="cst">Start the cup</button><button class="chip" data-to="modes">Back</button></div>`;
+ else if(n==='cup')cupScreen();
  else if(n==='pause'){m.className='ov';m.innerHTML=`<h2>Paused</h2><small>${online?'A bot plays for you while this menu is open':'Match paused'}</small><button class="go" id="rsm">Resume</button><button class="chip" id="lvm">Leave match</button>`;if(online)online.send('afk',{on:1})}
  else if(n==='lobby')lobby();
  else m.innerHTML=`<h2>Match setup</h2><div class="stp">${spTeam('t0',cfg.teams[0],cfg.teams,1,'Your team')}${spField(cfg.field,1)}${spTeam('t1',cfg.teams[1],cfg.teams,1,'Opponent')}</div><div class="opts"><span>Half</span>${chips([[60,'1:00'],[150,'2:30'],[300,'5:00']],'l',cfg.len)}<span>CPU</span>${chips([[.85,'Easy'],[1,'Normal'],[1.12,'Hard']],'d',cfg.diff)}</div><div class="row"><button class="go" id="st">Kick off</button><button class="chip" data-to="modes">Back</button></div>`}
@@ -196,8 +269,8 @@ const spTeam=(key:string,idx:number,ids:number[],on:any,label:string)=>{const T=
  return`<div class="sp${on?'':' off'}" data-sp="${key}"><small class="lb">${label}</small>${arrows(!!on,`${jersey(sc[side],away?T.c:T.s)}<b>${T.n}</b><span>${away?'away kit':on?'tap < > to change':'picked by captain'}</span>`)}</div>`};
 const spField=(cur:string,on:any)=>{const F=FIELDS.find(f=>f.id===cur)||FIELDS[0];return`<div class="sp${on?'':' off'}" data-sp="fd"><small class="lb">Stadium</small>${arrows(!!on,`<div class="th ${F.id}"></div><b>${F.n}</b><span>${on?'tap < > to change':'picked by captain'}</span>`)}</div>`};
 function spinStep(key:string,dir:number,onl:boolean){const T=TEAMS.length,F=FIELDS.length;
- if(key==='fd'){const cur=onl?lob.field:cfg.field,i=FIELDS.findIndex(f=>f.id===cur),nx=FIELDS[(i+dir+F)%F].id;if(onl)online.send('cfg',{field:nx});else{cfg.field=nx;show('set')}}
- else{const sd=key==='t0'?0:1,tm=onl?lob.teams:cfg.teams;let v=(tm[sd]+dir+T)%T;if(v===tm[1-sd])v=(v+dir+T)%T;if(onl)online.send('cfg',{team:v,side:sd});else{cfg.teams[sd]=v;show('set')}}
+ if(key==='fd'){const cur=onl?lob.field:cfg.field,i=FIELDS.findIndex(f=>f.id===cur),nx=FIELDS[(i+dir+F)%F].id;if(onl)online.send('cfg',{field:nx});else{cfg.field=nx;show(curScreen==='cupsetup'?'cupsetup':'set')}}
+ else{const sd=key==='t0'?0:1,tm=onl?lob.teams:cfg.teams;let v=(tm[sd]+dir+T)%T;if(v===tm[1-sd])v=(v+dir+T)%T;if(onl)online.send('cfg',{team:v,side:sd});else{cfg.teams[sd]=v;show(curScreen==='cupsetup'?'cupsetup':'set')}}
  padKeep=key}
 const dot=c=>`<i class="dt" style="background:${hex(c)}"></i>`;
 const fieldRow=(cur,on)=>FIELDS.map(f=>`<button class="chip${cur===f.id?' on':''}" ${on?`data-fd="${f.id}"`:'disabled'}>${f.n}</button>`).join('');
@@ -223,15 +296,15 @@ function lobbyClick(b,d){if(d.d!==undefined){spinStep(b.closest('.sp').dataset.s
  else if(d.mode)online.send('mode',{m:d.mode});else if(d.kick)online.send('kick',{idx:+d.kick});else if(d.host)online.send('host',{idx:+d.host});else if(b.id==='rd')online.send('rdy');else if(b.id==='sd')online.send('side');
  else if(b.id==='cl'){const url=location.origin+location.pathname+'?room='+lob.code;try{navigator.share?navigator.share({title:'Join my Street FC room',url}):navigator.clipboard.writeText(url);b.textContent='Link ready'}catch(e){b.textContent=url}}
  else if(b.id==='ls')online.send('start');else if(b.id==='lv'){const r=online;online=null;lob=null;r.leave();show('modes')}else return false;return true}
-$('menu').onclick=e=>{lockLand();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
+$('menu').onclick=e=>{lockLand();audioInit();sfx.click();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
  if(d.d!==undefined)spinStep(b.closest('.sp').dataset.sp,+d.d,false);else if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
- else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'KAZZ';if(roomParam&&!roomUsed){roomUsed=true;goOnline(roomParam,'join')}else show('modes')}
- else if(b.id==='rs')start({mode:s.mode,len:s.len,diff:s.diff});else if(b.id==='mn')show('modes');else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
-function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
+ else if(b.id==='gn'){nick=($('ni').value.replace(/[^\w ]/g,'').trim().toUpperCase().slice(0,14))||'KAZZ';if(roomParam&&!roomUsed){roomUsed=true;goOnline(roomParam,'join')}else if(!localStorage.getItem('sfc-tut')){start({mode:'training'});tutStart()}else show('modes')}
+ else if(b.id==='rs')start({mode:s.mode,len:s.len,diff:s.diff});else if(b.id==='mn')show('modes');else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr'){start({mode:'training'});tutStart()}else if(b.id==='cp'){cup?show('cup'):show('cupsetup')}else if(b.id==='cst')cupNew();else if(b.id==='cg')cupPlay();else if(b.id==='cc')cupAfter();else if(b.id==='cn'){cup=null;saveCup();show('cupsetup')}else if(b.id==='cr'){cfg.teams[0]=cup.team;cupNew()}else if(b.id==='sndm'){AU.on=!AU.on;try{localStorage.setItem('sfc-snd',AU.on?'1':'0')}catch(e){}sndBtn.textContent=AU.on?'Sound on':'Muted';show('modes')}else if(b.id==='inst'){if(deferredInstall)deferredInstall.prompt();else flash('Open your browser menu, then Add to Home Screen')}else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
+function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;tut=null;tutShow();REC.length=0;rep=null;repDone=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
 $('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');const dbg=new URLSearchParams(location.search).get('screen');if(dbg==='set')show('set');
 function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);pingHud(n);fpsWatch(n);
- if(online){fdt=dt;let hu:any=null;if(!inMenu&&!portrait()){hu=human();sendIn(hu,n);for(const k in press)press[k]=0}netTick(s,dt,hu,me)}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
- render(dt);minimap();ui();
+ if(online){fdt=dt;let hu:any=null;if(!inMenu&&!portrait()){hu=human();sendIn(hu,n);for(const k in press)press[k]=0}netTick(s,dt,hu,me)}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();tutWatch(dt,hu);while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
+ recFrame(n);repTick(n);render(dt);repRestore();minimap();ui();sfxWatch();
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
@@ -245,11 +318,6 @@ function wire(room:any){online=room;shown='';resetNet();const pi=setInterval(()=
 async function goOnline(code:string,how:string){const e:any=document.getElementById('oe')||{};e.textContent='Connecting...';
  try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}
  catch(x){if(!document.getElementById('oe'))show('online');e.textContent=how==='join'?'Room not found, or the match already started.':'Could not connect. Is the server running?'}}
-function sendIn(o:any,t:number){const j=JSON.stringify(o);
- // Send changed input immediately, and refresh held input at 30 Hz so packet loss doesn't leave stale controls.
- if(j!==lastIn||t-lastSend>=33||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
-if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s},get me(){return me},net}; // debug hook for automated screenshots (only with ?debug)
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
- navigator.serviceWorker.register('/sw.js').catch(err => console.warn('PWA service worker registration failed:', err));
-}
+function sendIn(o:any,t:number){const j=JSON.stringify(o);if(j!==lastIn||t-lastSend>100||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
+if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s},get me(){return me},get rep(){return rep},get tut(){return tut},get cup(){return cup},career,net}; // debug hook for automated screenshots (only with ?debug)
 requestAnimationFrame(loop);

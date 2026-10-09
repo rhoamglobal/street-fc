@@ -109,3 +109,13 @@ body.pad #zone,body.pad #btns,body.pad #sw{display:none!important}body.pad #hint
 @media (max-height:520px){.sp .ar{height:54px}.jy{width:46px;height:46px}.th{height:44px}.sp .c2 b{font-size:14px}}
 @media (max-width:640px){.sp .ar{flex-basis:26px}.sp .c2 b{font-size:12px}.sp .c2 span{display:none}}
 #ping{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:10px;font:800 11px Arial,sans-serif;z-index:3;display:none;text-shadow:0 1px 2px #000}
+
+/* ---- sound button, tutorial, replay ---- */
+#snd{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:134px;height:38px;padding:0 12px;border:0;border-radius:19px;background:rgba(255,255,255,.35);color:#fff;font:800 12px Arial,sans-serif;z-index:3}
+#tut{position:fixed;top:calc(62px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);max-width:min(80vw,520px);background:rgba(11,18,38,.88);border:2px solid #c6ff3d;border-radius:12px;padding:8px 14px;font:13px Arial,sans-serif;color:#fff;z-index:3;display:none;text-align:center}#tut b{color:#c6ff3d;margin-right:6px}
+#rep{position:fixed;top:calc(62px + env(safe-area-inset-top,0px));left:12px;z-index:5;display:none;align-items:center;gap:8px;font:900 18px Impact,Arial,sans-serif;color:#fff;font-style:italic;text-shadow:0 2px 0 #0b1226;background:rgba(11,18,38,.7);padding:4px 10px;border-radius:8px}
+#rep i{width:10px;height:10px;border-radius:50%;background:#ff2e88;animation:bl 1s infinite}@keyframes bl{50%{opacity:.2}}
+#rep button{font:700 11px Arial,sans-serif;padding:4px 10px;border-radius:12px;border:1px solid #fff8;background:transparent;color:#fff}
+/* ---- tidy HUD: sound button top-left under ping; replay tag top-centre ---- */
+#snd{right:auto;left:10px;top:calc(26px + env(safe-area-inset-top,0px));height:26px;padding:0 10px;font-size:11px}
+#rep{left:50%;transform:translateX(-50%)}
