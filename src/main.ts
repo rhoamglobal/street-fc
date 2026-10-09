@@ -2,11 +2,11 @@
 import * as THREE from 'three';
 import './style.css';
 import {W,H,GOAL,R,BR,clamp,mk,step,ai,NOACT,summary} from '../shared/sim';
-import {connect,reconnect,applySnap,netTick} from './net';
+import {connect,reconnect,applySnap,netTick,resetNet,net} from './net';
 import {TEAMS,FIELDS} from '../shared/data';
 // ===== 3D RENDER (Three.js): sim x,y -> world x,z at 0.1 scale =====
 const $=id=>document.getElementById(id),K=.1;
-const ren=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio||1,2));ren.outputEncoding=THREE.sRGBEncoding;
+const ren=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio||1,1.5));ren.outputEncoding=THREE.sRGBEncoding;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0ee);scene.fog=new THREE.Fog(0x9fd0ee,80,190);
 const cam=new THREE.PerspectiveCamera(45,1,.5,300);
 scene.add(new THREE.HemisphereLight(0xffffff,0xb89a6a,.95));const dl=new THREE.DirectionalLight(0xfff0d0,.6);dl.position.set(-20,40,20);scene.add(dl);
@@ -92,7 +92,8 @@ function render(dt){tt+=dt;
   r.sh.position.x=r.g.position.x;r.sh.position.z=r.g.position.z});
  const b=s.ball,bx=(b.x-W/2)*K,bz=(b.y-H/2)*K;ballM.position.set(bx,.55+b.h*K,bz);ballM.rotation.z-=b.vx*dt*K/.55;ballM.rotation.x+=b.vy*dt*K/.55;ballSh.position.set(bx,.04,bz);ballSh.scale.setScalar(.6/(1+b.h*.02));
  const mg=rigs[me].g.position;mark.position.set(mg.x,5+Math.sin(tt*5)*.25,mg.z);tagsUpdate();
- const k=1.2*Math.max(1,1.9/cam.aspect);cx+=(clamp(bx,-30,30)-cx)*Math.min(1,dt*3);cz+=(bz*.5-cz)*Math.min(1,dt*3);
+ const k=1.2*Math.max(1,1.9/cam.aspect);const fx0=online?mg.x:bx,fz0=online?mg.z:bz; // online: the camera follows YOUR player, not the ball
+ cx+=(clamp(fx0,-30,30)-cx)*Math.min(1,dt*(online?4:3));cz+=(fz0*(online?.7:.5)-cz)*Math.min(1,dt*3);
  cam.position.set(cx,30*k,cz+26*k);cam.lookAt(cx,0,cz);ren.render(scene,cam)}
 function resize(){ren.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',resize);resize();
 const mmc=$('mm'),mx_=mmc.getContext('2d');
@@ -121,9 +122,9 @@ function human(){const g=gp(),o={mx:stick.x+(keys.d||keys.arrowright?1:0)-(keys.
  for(const k of['sprint','pass','lob','thru','shield','skill','tackle'])o[k]=on(k)?1:0;
  const opp=s.own>=0&&s.ps[s.own].t!==s.ps[me].t,down=!opp&&on('shoot');if(down)chg+=fdt;o.shoot=0;if(!down&&wasDown){o.shoot=clamp(.4+chg*.75,.4,1);chg=0}wasDown=down;
  $('pwr').style.display=down?'block':'none';$('pwr').firstChild.style.width=Math.min(100,(.4+chg*.75)*100)+'%';
- if(opp){o.press=o.pass;o.pass=0;if(on('shoot'))o.tackle=1;if(o.lob){o.slide=1;o.lob=0}}else if(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t&&o.pass){o.call=1;o.pass=0}else if(s.own!==me&&o.pass){o.tackle=1;o.pass=0}o.h=1;return o} // defending: X press, Square tackle, Circle slide
+ if(opp){o.press=o.pass;o.pass=0;if(on('shoot'))o.tackle=1;if(o.lob){o.slide=1;o.lob=0}}else if(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t&&o.pass){o.call=1;o.pass=0}else if(s.own!==me&&o.pass&&!(s.own<0&&Math.hypot(s.ball.x-s.ps[me].x,s.ball.y-s.ps[me].y)<75)){o.tackle=1;o.pass=0}o.h=1;return o} // defending: X press, Square tackle, Circle slide
 // ===== UI + LOOP =====
-function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own].t===0){me=s.own;return}
+function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own].t===0){me=s.own;return}if(s.own<0&&s.rcv>=0&&s.rcvT>0&&s.ps[s.rcv].t===0){me=s.rcv;return}
  let bd=Math.hypot(s.ps[me].x-s.ball.x,s.ps[me].y-s.ball.y),bi=me;s.ps.forEach((q,j)=>{if(q.t===0&&!q.off){const d=Math.hypot(q.x-s.ball.x,q.y-s.ball.y);if(d<bd-25){bd=d;bi=j}}});me=bi}
 const portrait=()=>matchMedia('(orientation:portrait) and (pointer:coarse)').matches;
 function lockLand(){const e=document.documentElement;try{(e.requestFullscreen?e.requestFullscreen():Promise.reject()).then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}catch(x){}}
@@ -150,6 +151,10 @@ function padPoll(now:number){const g:any=navigator.getGamepads?[...navigator.get
  if(st.s&&!padPrev.s&&curScreen==='pause')$('rsm').click();
  padPrev=st;
  if(padUsed&&!document.querySelector('#menu .pf')){const e:any[]=padEls();let f:any=padKeep&&document.querySelector('#menu .sp[data-sp="'+padKeep+'"] .ar:not([disabled])');padKeep='';f=f||e.find(x=>x.classList.contains('go'))||e[0];if(f)padFocus(f)}}
+const pg=document.createElement('div');pg.id='ping';document.body.appendChild(pg);let pgT=0;
+function pingHud(now:number){if(now<pgT)return;pgT=now+1000;if(!online||!net.rtt){pg.style.display='none';return}const r=Math.round(net.rtt);pg.style.display='block';pg.textContent=r+' ms';pg.style.color=r<80?'#c6ff3d':r<150?'#ffd24d':'#ff4d5e'}
+let fpsN=0,fpsT=0,pr=Math.min(devicePixelRatio||1,1.5); // slow phone? drop the render resolution automatically
+function fpsWatch(now:number){fpsN++;if(now-fpsT>2500){const f=fpsN*1000/(now-fpsT);fpsN=0;fpsT=now;if(f<38&&pr>1){pr=1;ren.setPixelRatio(1);resize()}}}
 const pt=document.createElement('div');pt.id='pt';document.body.appendChild(pt);const ph=document.createElement('div');ph.id='padhint';ph.textContent='A select  -  B back  -  Start pause';document.body.appendChild(ph);
 function flash(t:string){pt.textContent=t;pt.style.display='block';setTimeout(()=>{pt.style.display='none'},2500)}
 addEventListener('gamepadconnected',()=>{document.body.classList.add('pad');padUsed=true;flash('Gamepad connected')});
@@ -224,14 +229,14 @@ $('menu').onclick=e=>{lockLand();const b=e.target.closest('button');if(!b||b.dis
  else if(b.id==='rs')start({mode:s.mode,len:s.len,diff:s.diff});else if(b.id==='mn')show('modes');else if(b.id==='rsm'){$('menu').className='hide';inMenu=false;if(online)online.send('afk',{on:0})}else if(b.id==='lvm'){if(online){online.leave();online=null}show('modes')}else if(b.id==='ol')show('online');else if(b.id==='oq')goOnline('QUICK','quick');else if(b.id==='op')goOnline(Math.random().toString(36).slice(2,7).toUpperCase(),'create');else if(b.id==='oj')goOnline($('oc').value,'join');else if(b.id==='qm')show('set');else if(b.id==='tr')start({mode:'training'});else if(b.id==='so')start({mode:'shootout',diff:cfg.diff});else if(b.id==='st')start({mode:'match',len:cfg.len,diff:cfg.diff})};
 function start(o){o={...o,names:[TEAMS[cfg.teams[0]].sh,TEAMS[cfg.teams[1]].sh]};s=mk(o);look(cfg.field,cfg.teams);me=4;shown='';acc=0;paused=false;$('pz').textContent='II';$('menu').className='hide';inMenu=false}
 $('mb').onclick=()=>show('pause');look(cfg.field,cfg.teams);show('name');const dbg=new URLSearchParams(location.search).get('screen');if(dbg==='set')show('set');
-function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);
- if(online){fdt=dt;netTick(s,dt);if(!inMenu&&!portrait()){const hu=human();sendIn(hu,n);for(const k in press)press[k]=0}}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
+function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);pingHud(n);fpsWatch(n);
+ if(online){fdt=dt;let hu:any=null;if(!inMenu&&!portrait()){hu=human();sendIn(hu,n);for(const k in press)press[k]=0}netTick(s,dt,hu,me)}else if(!paused&&!inMenu&&!portrait()){acc+=dt;auto();fdt=dt;const hu=human();while(acc>=1/60){step(s,s.ps.map((p,k)=>k===me?hu:(p.off||(s.mode==='training'&&p.t)?NOACT:ai(s,k))),1/60);acc-=1/60}for(const k in press)press[k]=0}
  render(dt);minimap();ui();
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
-function wire(room:any){online=room;shown='';
- room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m));room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onMessage('sum',(d:any)=>{sumData=d;if(s.over)showSummary()});
+function wire(room:any){online=room;shown='';resetNet();const pi=setInterval(()=>{if(online===room)room.send('p',{t:performance.now()});else clearInterval(pi)},1500);room.send('p',{t:performance.now()});
+ room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m,me));room.onMessage('q',(m:any)=>{const r=performance.now()-m.t;net.rtt=net.rtt?net.rtt*.7+r*.3:r});room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onMessage('sum',(d:any)=>{sumData=d;if(s.over)showSummary()});
  room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});
  room.onLeave(async(code:number)=>{if(online!==room)return;if(code===1000||code===4000){online=null;lob=null;show('modes');return}
   for(let i=0;i<10;i++){$('msg').innerHTML='<span class="pop">RECONNECTING...</span>';await new Promise(r=>setTimeout(r,3000));try{wire(await reconnect());return}catch(e){}}
@@ -241,5 +246,5 @@ async function goOnline(code:string,how:string){const e:any=document.getElementB
  try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}
  catch(x){if(!document.getElementById('oe'))show('online');e.textContent=how==='join'?'Room not found, or the match already started.':'Could not connect. Is the server running?'}}
 function sendIn(o:any,t:number){const j=JSON.stringify(o);if(j!==lastIn||t-lastSend>100||o.shoot){lastIn=j;lastSend=t;online.send('in',o)}}
-if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s}}; // debug hook for automated screenshots (only with ?debug)
+if(location.search.includes('debug'))(window as any).__sfc={start,showSummary,get s(){return s},get me(){return me},net}; // debug hook for automated screenshots (only with ?debug)
 requestAnimationFrame(loop);

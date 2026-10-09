@@ -6,11 +6,13 @@ import { TEAMS, FIELDS } from '../shared/data';
 // Two kinds of room:
 //  quick   : phase wait (countdown, bots fill in) -> play. Late joiners can take over a bot slot.
 //  private : phase lobby (code/link, ready check, host picks mode + moves players) -> [coin toss if humans on both sides] -> setup (stadium + kits) -> play -> back to lobby
+const LAG = Number(process.env.LAG) || 0; // dev only: LAG=100 simulates ~200ms round trip
+const later = (f: () => void) => (LAG ? setTimeout(f, LAG) : f());
 const QUICK_WAIT = 12000, LEN = Number(process.env.LEN) || 150;
 class MatchRoom extends Room {
   maxClients = 10;
   s: any; afk = new Set<number>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
-  held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; code = 'QUICK'; waitUntil = 0; lastPub = 0;
+  held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; nk = 0; nsig = ''; code = 'QUICK'; waitUntil = 0; lastPub = 0;
   cfg: any = { kind: 'private', phase: 'lobby', mode: 'versus', field: 'street', teams: [0, 2], caps: [-1, -1], chooser: -1, caller: -1, toss: null, host: -1, eta: 0 };
   names() { return this.cfg.teams.map((i: number) => TEAMS[i].sh); }
   free(t: number) { const taken = new Set(this.slots.values()); return [4, 3, 2, 1, 0].find(i => !taken.has(t * 5 + i)); }
@@ -49,10 +51,13 @@ class MatchRoom extends Room {
     this.onMessage('in', (c, m) => {
       const k = me(c); if (k === undefined || !m) return;
       const n = (v: any) => Math.max(-1, Math.min(1, Number(v) || 0));
+      later(() => {
       this.held[k] = { mx: n(m.mx), my: n(m.my), sprint: m.sprint ? 1 : 0, shield: m.shield ? 1 : 0, press: m.press ? 1 : 0 };
       for (const a of ['pass', 'lob', 'thru', 'tackle', 'slide', 'skill', 'call']) if (m[a]) this.latch[k][a] = 1;
       if (m.shoot) this.latch[k].shoot = Math.max(0.4, Math.min(1, Number(m.shoot) || 0.4));
+      });
     });
+    this.onMessage('p', (c, m) => later(() => later(() => c.send('q', { t: m?.t })))); // ping -> pong, for the ping display and prediction
     this.onMessage('afk', (c, m) => { const k = me(c); if (k === undefined) return; if (m?.on) this.afk.add(k); else this.afk.delete(k); }); // menu open: a bot plays for you
     // ---- private lobby controls
     this.onMessage('rdy', (c) => { if (this.cfg.phase !== 'lobby') return; this.rdy.has(c.sessionId) ? this.rdy.delete(c.sessionId) : this.rdy.add(c.sessionId); this.pub(); });
@@ -92,7 +97,7 @@ class MatchRoom extends Room {
       if (c.phase !== 'play') return;
       acc += Math.min(ms, 100) / 1000; snap += ms;
       while (acc >= 1 / 60) { this.tick(); acc -= 1 / 60; }
-      if (snap >= 50) { snap = 0; this.broadcast('s', this.snap()); this.sendCalls(); }
+      if (snap >= 50) { snap = 0; const sn = this.snap(); later(() => this.broadcast('s', sn)); later(() => this.sendCalls()); }
     }, 1000 / 60);
   }
   tick() {
@@ -112,7 +117,9 @@ class MatchRoom extends Room {
   }
   onJoin(c: Client, o: any) {
     const k = this.assign(c.sessionId); this.order.push(c.sessionId);
-    this.nicks[k] = String(o?.nick || 'PLAYER').replace(/[^\w ]/g, '').slice(0, 14).toUpperCase();
+    let nm = String(o?.nick || 'PLAYER').replace(/[^\w ]/g, '').trim().slice(0, 14).toUpperCase() || 'PLAYER'; const base = nm; let n = 2;
+    while (this.nicks.includes(nm)) nm = base.slice(0, 12) + ' ' + n++; // two players can't share a name in one match
+    this.nicks[k] = nm;
     this.reconf();
   }
   async onLeave(c: Client, consented: boolean) { // dropped connection during a match: a bot covers for up to 60s
@@ -125,11 +132,12 @@ class MatchRoom extends Room {
   // pass calls go ONLY to the caller's own team, so opponents never receive them
   sendCalls() { const calls: number[][] = [[], []]; this.s.ps.forEach((p: any, k: number) => { if (p.cl > 0) calls[p.t].push(k); });
     for (const c of this.clients) { const k = this.slots.get(c.sessionId); if (k !== undefined && this.ready.has(c.sessionId)) c.send('c', calls[k < 5 ? 0 : 1]); } }
+  nickPart() { const sig = this.nicks.join('|'); const send = sig !== this.nsig || this.nk++ % 40 === 0; if (send) this.nsig = sig; return send ? this.nicks : undefined; } // names only when they change
   snap() {
     const s = this.s, r = (v: number) => Math.round(v * 10) / 10;
-    return { t: r(s.time), h: s.half, sc: s.score, m: s.msg, k: s.kind, u: s.sub, gt: s.gt, x: s.sc, y: s.as, og: s.og, mn: s.mn, pa: s.pause > 0 ? 1 : 0, ov: s.over ? 1 : 0, o: s.own,
+    return { t: r(s.time), h: s.half, sc: s.score, m: s.msg, k: s.kind, u: s.sub, gt: s.gt, z: s.freeze > 0 ? 1 : 0, tk: s.taker, gk: s.gk, x: s.sc, y: s.as, og: s.og, mn: s.mn, pa: s.pause > 0 ? 1 : 0, ov: s.over ? 1 : 0, o: s.own,
       b: [r(s.ball.x), r(s.ball.y), r(s.ball.vx), r(s.ball.vy), r(s.ball.h)],
-      p: s.ps.map((p: any) => [r(p.x), r(p.y), r(p.vx), r(p.vy), +p.fx.toFixed(2), +p.fy.toFixed(2), p.stun > 0 ? 1 : 0, p.sh ? 1 : 0, p.run ? 1 : 0, +p.st.toFixed(2), (p.sl > 0 ? 1 : 0) + (p.kk > 0 ? 2 : 0)]), n: this.nicks };
+      p: s.ps.map((p: any) => [r(p.x), r(p.y), r(p.vx), r(p.vy), +p.fx.toFixed(2), +p.fy.toFixed(2), p.stun > 0 ? 1 : 0, p.sh ? 1 : 0, p.run ? 1 : 0, +p.st.toFixed(2), (p.sl > 0 ? 1 : 0) + (p.kk > 0 ? 2 : 0)]), n: this.nickPart() };
   }
 }
 const server = new Server({ transport: new WebSocketTransport() });

@@ -37,3 +37,9 @@ Plug in / pair a controller and press any button. In a match: left stick or d-pa
 In menus: d-pad or left stick moves the highlight, X selects, Circle goes back, Start resumes. Touch controls hide while a pad is connected.
 
 Team / stadium pickers: use the arrow buttons (touch) or d-pad left/right (gamepad) to cycle; up/down moves between rows.
+
+## Gameplay notes
+Online, the camera follows your own player. Passes: tap Pass for an assisted pass to the best open teammate in the direction you push; the ball bends toward its receiver. Press Pass/Shoot as the ball arrives for a one-touch. Shots are NOT aim-assisted. Fouls only happen on a slide tackle from behind.
+
+## Lag
+Online play predicts your own movement locally, interpolates everyone else ~100ms in the past, shows ping (top-left), and lowers render resolution on slow phones. Dev tools: run the server with LAG=100 to fake ~200ms round trip; add ?nopredict to the page URL to compare without prediction.
