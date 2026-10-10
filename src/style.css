@@ -148,3 +148,25 @@ body.pad #zone,body.pad #btns,body.pad #sw{display:none!important}body.pad #hint
 #msg.k-foul .pop{border-color:#ff2e88;border-left-color:#ff2e88}
 #msg.k-pen .pop{border-color:#ffb020;border-left-color:#ffb020}
 @keyframes goal-pop{0%{transform:scale(.86);opacity:0}55%{transform:scale(1.04);opacity:1}100%{transform:scale(1);opacity:1}}
+
+/* Responsive touch controls and short match feedback accents */
+body.touch-left #zone{left:auto;right:0}
+body.touch-left #btns{left:10px;right:auto}
+@media(pointer:coarse){
+ #btns{width:270px;height:252px;bottom:calc(12px + env(safe-area-inset-bottom,0px));right:12px}
+ #btns button,#sw{touch-action:none;box-shadow:0 3px 12px #0006;text-shadow:0 1px 2px #000}
+ #btns .f{background:rgba(11,18,38,.78);border:2px solid #52669e;backdrop-filter:blur(4px)}
+ #btns [data-k=thru]{border-color:#c6ff3d;color:#c6ff3d}
+ #btns [data-k=shoot]{border-color:#ff2e88;color:#ff8bad}
+ #btns [data-k=lob]{border-color:#ffb020;color:#ffd27d}
+ #btns [data-k=pass]{border-color:#c6ff3d;color:#c6ff3d;background:rgba(11,18,38,.86)}
+ #btns [data-k=shield],#btns [data-k=sprint],#btns [data-k=skill]{background:rgba(11,18,38,.8);border-color:#6073a8}
+ #zone i{border-color:#c6ff3d99;background:#0b122655;backdrop-filter:blur(3px)}#zone i b{background:#c6ff3d;box-shadow:0 0 14px #c6ff3d88}
+}
+#sbd.goal-flash{animation:score-hit .55s ease-out}
+#sbd.foul-flash{animation:foul-hit .42s ease-out}
+@keyframes score-hit{35%{box-shadow:0 0 0 3px #c6ff3d,0 0 28px #c6ff3d99,0 6px 16px #0008;transform:scale(1.035)}100%{transform:scale(1)}}
+@keyframes foul-hit{35%{box-shadow:0 0 0 3px #ff2e88,0 0 22px #ff2e8888;transform:translateY(-2px)}100%{transform:translateY(0)}}
+#tut .drill-progress{display:block;margin-top:5px;color:#c6ff3d;font-weight:800;letter-spacing:1px}
+@media(max-width:600px){#btns{transform:scale(.88);transform-origin:right bottom}body.touch-left #btns{transform-origin:left bottom}#menu .card{width:min(42vw,170px)}}
+@media(max-height:420px) and (pointer:coarse){#btns{transform:scale(.78);transform-origin:right bottom}body.touch-left #btns{transform-origin:left bottom}#btns [data-k=shield],#btns [data-k=sprint],#btns [data-k=skill]{top:0}#btns .f{width:54px;height:54px}#btns [data-k=thru]{left:108px;top:68px}#btns [data-k=shoot]{left:54px;top:116px}#btns [data-k=lob]{left:162px;top:116px}#btns [data-k=pass]{left:108px;top:164px}}

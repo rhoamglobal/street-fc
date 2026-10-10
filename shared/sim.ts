@@ -107,16 +107,16 @@ export const NOACT={mx:0,my:0,sprint:0,press:0,slide:0,call:0,pass:0,lob:0,thru:
 // AI: attackers dribble, dodge, pass to free runners and shoot; defenders press, cover and mark goal-side
 export function ai(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?0:W,ogx=p.t?W:0;
  const mates=s.ps.filter(q=>q.t===p.t&&!q.off),opps=s.ps.filter(q=>q.t!==p.t&&!q.off),car=s.own>=0?s.ps[s.own]:null;
- const dist=(a,x,y)=>Math.hypot(a.x-x,a.y-y),by=(x,y)=>mates.slice().sort((a,c)=>dist(a,x,y)-dist(c,x,y));let tx=p.hx,ty=p.hy;
+ const dist=(a,x,y)=>Math.hypot(a.x-x,a.y-y),by=(x,y)=>mates.slice().sort((a,c)=>dist(a,x,y)-dist(c,x,y)),style=(p.i+Math.floor(s.time/14))%3;let tx=p.hx,ty=p.hy;
  if(s.gk===k&&s.gkT>0){tx=ogx+d*14;ty=clamp(b.y,H/2-GOAL/2+8,H/2+GOAL/2-8);if(dist(p,b.x,b.y)<45){tx=b.x;ty=b.y}}
  else if(car===p){const dg=dist(p,gx,H/2);let o=opps[0];opps.forEach(c=>{if(dist(c,p.x,p.y)<dist(o,p.x,p.y))o=c});const near=o?dist(o,p.x,p.y):1e9;
-  tx=gx;ty=H/2+(p.y<H/2?-30:30);if(near<90){ty=p.y+(p.y>o.y?90:-90);tx=p.x+d*50}
-  u.sprint=near>80?1:0;if(dg<360&&(near>45||dg<200||Math.random()<.04))u.shoot=.6;
+  tx=gx;ty=H/2+(p.y<H/2?-30:30);if(near<120){const escape=(p.y>o.y?1:-1)*(style===2?1.25:.85);ty=clamp(p.y+escape*86,55,H-55);tx=p.x+d*(style===0?28:58)}
+  u.sprint=near>80?1:0;if(dg<390&&(near>52||dg<210||style===1&&Math.random()<.07))u.shoot=.58;
   const free=mates.filter(q=>q!==p&&(q.x-p.x)*d>-20&&dist(q,p.x,p.y)>90&&dist(q,p.x,p.y)<380&&opps.every(c=>dist(c,q.x,q.y)>60)).sort((a,c)=>(c.x-a.x)*d);
-  const cal=mates.filter(q=>q!==p&&q.cl>0&&!q.ca&&dist(q,p.x,p.y)>60).sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y));if(cal.length&&Math.random()<.06){u.pass=1;u.to=cal[0]}else if(free.length&&near<75&&Math.random()<.05){u.pass=1;u.to=free[0]}}
- else if(car&&car.t===p.t){tx=clamp(p.hx+(car.x-W/2)*.55+d*70,60,W-60);ty=clamp(p.hy+(car.y-H/2)*.35,40,H-40);u.sprint=dist(p,tx,ty)>120?1:0;if(dist(p,car.x,car.y)<300&&(p.x-car.x)*d>40&&opps.every(o=>dist(o,p.x,p.y)>70)&&Math.random()<.01){u.call=1;u.ai=1}}
+  const cal=mates.filter(q=>q!==p&&q.cl>0&&!q.ca&&dist(q,p.x,p.y)>60).sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y));if(cal.length&&Math.random()<.08){u.pass=1;u.to=cal[0]}else if(free.length&&near<(style===0?115:82)&&Math.random()<(style===0?.085:.045)){u.pass=1;u.to=free[0]}}
+ else if(car&&car.t===p.t){const lane=(p.i%2?1:-1)*(p.i===1||p.i===4?1.15:.65);tx=clamp(p.hx+(car.x-W/2)*.55+d*70,60,W-60);ty=clamp(p.hy+(car.y-H/2)*.35+lane*48,40,H-40);u.sprint=dist(p,tx,ty)>110?1:0;if(dist(p,car.x,car.y)<300&&(p.x-car.x)*d>40&&opps.every(o=>dist(o,p.x,p.y)>70)&&Math.random()<.014){u.call=1;u.ai=1}}
  else if(car){const rank=by(car.x,car.y).indexOf(p);
-  if(rank===0&&dist(p,car.x,car.y)<320){tx=car.x;ty=car.y;const dc=dist(p,car.x,car.y);u.sprint=dc>90?1:0;if(dc<2*R+12&&Math.random()<.018)u.tackle=1}
+  if(rank===0&&dist(p,car.x,car.y)<350){tx=car.x;ty=car.y;const dc=dist(p,car.x,car.y);u.sprint=dc>75?1:0;if(dc<2*R+16&&Math.random()<.026)u.tackle=1}
   else if(rank===1){tx=car.x+(ogx-car.x)*.3;ty=car.y+(H/2-car.y)*.3}
   else{const ms=opps.filter(o=>o!==car),o=ms[p.i%ms.length]||car;tx=o.x+(ogx-o.x)*.25;ty=o.y+(H/2-o.y)*.1}}
  else{if(by(b.x,b.y)[0]===p||(s.rcv===k&&s.rcvT>0)){tx=b.x+b.vx*.2;ty=b.y+b.vy*.2;u.sprint=dist(p,b.x,b.y)>60?1:0}else{tx=p.hx+(b.x-W/2)*.4;ty=p.hy+(b.y-H/2)*.3}}
