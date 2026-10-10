@@ -5,6 +5,12 @@ import { TEAMS, FIELDS } from '../shared/data';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 
+// Vite reads .env.local for the client, but this separate server process must load it itself.
+if (typeof process.loadEnvFile === 'function') {
+  try { process.loadEnvFile('.env.local'); }
+  catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+}
+
 // Two kinds of room:
 //  quick   : phase wait (countdown, bots fill in) -> play. Late joiners can take over a bot slot.
 //  private : phase lobby (code/link, ready check, host picks mode + moves players) -> [coin toss if humans on both sides] -> setup (stadium + kits) -> play -> back to lobby

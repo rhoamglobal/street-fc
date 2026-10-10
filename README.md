@@ -28,7 +28,7 @@ Then Vercel: Import the repo (Vite), add VITE_SERVER_URL=wss://<your-server-host
 Check: open https://<your-server-host>/matchmake/ in a browser. Seeing [] means the server is up (the bare / address shows nothing, that is normal).
 
 ## Admin analytics
-Set `ADMIN_TOKEN` on the game server to a long random secret. Set `ADMIN_ORIGIN` to the exact public origin that serves the game/admin page (for example `https://street-fb.vercel.app`). On Render, the Blueprint asks for both values because they are marked `sync: false`.
+For local development, put `ADMIN_TOKEN` and `ADMIN_ORIGIN=http://localhost:5173` in `.env.local`; the game server loads that file when it starts. Set `ADMIN_TOKEN` on the deployed game server to a long random secret, and set `ADMIN_ORIGIN` to the exact public origin that serves the game/admin page (for example `https://street-fb.vercel.app`). On Render, the Blueprint asks for both values because they are marked `sync: false`.
 Open `https://<your-game-site>/admin.html` and enter the token. The page refreshes every 10 seconds and shows connected players, active rooms, live matches, waiting rooms, server uptime, and runtime join/match totals. Counts are held in memory and reset when the server restarts; player names and addresses are not collected. In local development, the dashboard at `http://localhost:5173/admin.html` reads the server at port 2567.
 
 ## Online modes
