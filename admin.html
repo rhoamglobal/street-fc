@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1226" />
+    <title>Street FB Admin</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+  </head>
+  <body class="admin-page">
+    <main class="admin-shell">
+      <header class="admin-header">
+        <a class="admin-brand" href="/" aria-label="Street FB home"><img src="/favicon.png" alt="" /><span>STREET <b>FB</b></span></a>
+        <span class="admin-label">ADMIN ANALYTICS</span>
+      </header>
+
+      <section class="admin-auth" aria-labelledby="admin-title">
+        <div>
+          <h1 id="admin-title">Game activity</h1>
+          <p>Enter the admin token configured on the game server to view live, aggregate activity.</p>
+        </div>
+        <form id="auth-form">
+          <label for="admin-token">Admin token</label>
+          <div class="auth-row">
+          <input id="admin-token" type="password" autocomplete="off" required />
+            <button class="primary" type="submit">Connect</button>
+          </div>
+          <button id="disconnect" class="text-button" type="button" hidden>Disconnect</button>
+        </form>
+      </section>
+
+      <p id="status" class="status" role="status">Dashboard is disconnected.</p>
+      <section id="dashboard" hidden aria-label="Live game analytics">
+        <div class="metric-grid">
+          <article class="metric"><span>ONLINE NOW</span><strong id="online-players">—</strong><small>connected players</small></article>
+          <article class="metric"><span>ACTIVE ROOMS</span><strong id="active-rooms">—</strong><small>all match rooms</small></article>
+          <article class="metric"><span>LIVE MATCHES</span><strong id="live-matches">—</strong><small id="match-players">— players in matches</small></article>
+          <article class="metric"><span>WAITING ROOMS</span><strong id="waiting-rooms">—</strong><small>lobbies and quick queues</small></article>
+          <article class="metric"><span>SERVER UPTIME</span><strong id="uptime">—</strong><small>since last restart</small></article>
+          <article class="metric"><span>RUNTIME TOTALS</span><strong id="joins">—</strong><small id="matches-started">— matches started</small></article>
+        </div>
+        <section class="rooms-panel">
+          <div class="rooms-heading"><h2>Rooms right now</h2><span id="updated-at">Waiting for data</span></div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Room ID</th><th>Type</th><th>Status</th><th>Players</th><th>Mode</th><th>Field</th></tr></thead>
+              <tbody id="rooms"><tr><td colspan="6" class="empty">No active rooms.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <p class="privacy-note">These counts are held in server memory and reset when the game server restarts. Player names and addresses are not collected here.</p>
+      </section>
+    </main>
+    <script type="module" src="/src/admin.ts"></script>
+  </body>
+</html>

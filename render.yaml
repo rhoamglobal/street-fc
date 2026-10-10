@@ -9,3 +9,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: ADMIN_ORIGIN
+        sync: false

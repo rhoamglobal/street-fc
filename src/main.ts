@@ -24,6 +24,7 @@ function pitchTex(){const c=document.createElement('canvas');c.width=2000;c.heig
  const t=new THREE.CanvasTexture(c);t.anisotropy=4;t.encoding=THREE.sRGBEncoding;return t}
 // ===== FIELDS: street court / dust pitch / synthetic arena (rebuilt on demand) =====
 const env=new THREE.Group();scene.add(env);
+const crowdRows:any[]=[];let crowdCheering=false;
 const add=(o,x,y,z)=>{o.position.set(x,y,z);env.add(o);return o};
 const bx=(w,h,d,c,x,y,z)=>add(new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(c)),x,y,z);
 const LINES=g=>{g.strokeStyle='rgba(255,255,255,.92)';g.lineWidth=8;g.strokeRect(4,4,1992,1112);g.beginPath();g.moveTo(1000,0);g.lineTo(1000,1120);g.stroke();g.beginPath();g.arc(1000,560,140,0,7);g.stroke();g.strokeRect(4,300,260,520);g.strokeRect(1736,300,260,520)};
@@ -34,10 +35,10 @@ function texOf(kind){const c=document.createElement('canvas');c.width=2000;c.hei
  LINES(g);const t=new THREE.CanvasTexture(c);t.anisotropy=4;t.encoding=THREE.sRGBEncoding;return t}
 const FLD={street:{sky:0x9fd0ee,gnd:0xc9a56d,tex:()=>pitchTex()},dust:{sky:0xf0b27a,gnd:0xb9824f,tex:()=>texOf('dust')},arena:{sky:0x16224a,gnd:0x1c2b45,tex:()=>texOf('arena')}};
 const PAL=[0xe86f9a,0xf2c14e,0x5ec4b6,0xf4a259,0x8ecae6,0xe9a6c7,0xb7d968],AWN=[0xd62828,0x2a9d4f,0xf77f00,0x1d6fd6,0xf5c518];
-function buildField(id){const f=FLD[id]||FLD.street;while(env.children.length)env.remove(env.children[0]);scene.background.set(f.sky);scene.fog.color.set(f.sky);
+function buildField(id){const f=FLD[id]||FLD.street;while(env.children.length)env.remove(env.children[0]);crowdRows.length=0;crowdCheering=false;scene.background.set(f.sky);scene.fog.color.set(f.sky);
  add(new THREE.Mesh(new THREE.PlaneGeometry(W*K,H*K),new THREE.MeshBasicMaterial({map:f.tex()})),0,0,0).rotation.x=-Math.PI/2;
  add(new THREE.Mesh(new THREE.PlaneGeometry(500,500),mat(f.gnd)),0,-.03,0).rotation.x=-Math.PI/2;
- const crowd=(n,x0,x1,z0,z1,y)=>{const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(.45,.45,2,6),new THREE.MeshLambertMaterial({color:0xffffff}),n),M=new THREE.Matrix4(),C=new THREE.Color();for(let i=0;i<n;i++){M.setPosition(x0+Math.random()*(x1-x0),y,z0+Math.random()*(z1-z0));im.setMatrixAt(i,M);im.setColorAt(i,C.setHSL(Math.random(),.65,.55))}env.add(im)};
+ const crowd=(n,x0,x1,z0,z1,y)=>{const im=new THREE.InstancedMesh(new THREE.CylinderGeometry(.45,.45,2,6),new THREE.MeshLambertMaterial({color:0xffffff}),n),M=new THREE.Matrix4(),C=new THREE.Color(),points:number[][]=[];for(let i=0;i<n;i++){const x=x0+Math.random()*(x1-x0),z=z0+Math.random()*(z1-z0);points.push([x,y,z]);M.setPosition(x,y,z);im.setMatrixAt(i,M);im.setColorAt(i,C.setHSL(Math.random(),.65,.55))}im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);env.add(im);crowdRows.push({im,points})};
  if(id==='arena'){for(let i=0;i<5;i++){bx(112,1.2,3,i%2?0x2b3a67:0x233057,0,.6+i*1.2,-33-i*3);crowd(26,-52,52,-33-i*3,-33-i*3,1.2*i+1.8)}
   for(let i=0;i<10;i++){const c=[0xff2e88,0x2a6fdb,0xc6ff3d,0xf6c90e,0xffffff][i%5];bx(10,1.5,.3,c,-45+i*10,.75,-29.5);bx(10,1.5,.3,c,-45+i*10,.75,29.5)}
   [-1,1].forEach(sx=>[-26,26].forEach(z=>{bx(.5,18,.5,0x888888,sx*54,9,z);bx(4,1,1,0xfff6c4,sx*54,18.2,z)}))}
@@ -84,6 +85,7 @@ const ballM=new THREE.Mesh(new THREE.SphereGeometry(.55,12,10),new THREE.MeshLam
 const mark=new THREE.Mesh(new THREE.ConeGeometry(.5,1,4),new THREE.MeshBasicMaterial({color:0x35e0ff}));mark.rotation.x=Math.PI;scene.add(mark);
 let cx=0,cz=0,tt=0;
 function render(dt){tt+=dt;
+ const cheering=!rep&&s.kind==='goal'&&s.pause>0;if(cheering||crowdCheering){crowdCheering=cheering;const M=new THREE.Matrix4();crowdRows.forEach(({im,points})=>{points.forEach(([x,y,z],i)=>{M.makeTranslation(x,y+(cheering?(Math.sin(tt*16+i*1.7)+1)*.42:0),z);im.setMatrixAt(i,M)});im.instanceMatrix.needsUpdate=true})}
  s.ps.forEach((p,k)=>{const r=rigs[k],sp=Math.hypot(p.vx,p.vy);r.g.visible=r.sh.visible=!p.off;r.g.position.set((p.x-W/2)*K,0,(p.y-H/2)*K);
   let da=Math.atan2(p.fx,p.fy)-r.ang;da=Math.atan2(Math.sin(da),Math.cos(da));r.ang+=da*Math.min(1,dt*14);r.g.rotation.y=r.ang;
   r.ph+=sp*dt*.09;const w=Math.sin(r.ph)*.9*Math.min(1,sp/150),cel=!rep&&s.kind==='goal'&&s.pause>0&&p.t===s.gt;
@@ -128,7 +130,7 @@ function auto(){if(s.mode==='shootout'||s.pause>0)return;if(s.own>=0&&s.ps[s.own
  let bd=Math.hypot(s.ps[me].x-s.ball.x,s.ps[me].y-s.ball.y),bi=me;s.ps.forEach((q,j)=>{if(q.t===0&&!q.off){const d=Math.hypot(q.x-s.ball.x,q.y-s.ball.y);if(d<bd-25){bd=d;bi=j}}});me=bi}
 const portrait=()=>matchMedia('(orientation:portrait) and (pointer:coarse)').matches;
 function lockLand(){const e=document.documentElement;try{(e.requestFullscreen?e.requestFullscreen():Promise.reject()).then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}catch(x){}}
-let shown='',last=performance.now(),acc=0,loaded=false;
+let shown='',connectionNotice='',last=performance.now(),acc=0,loaded=false;
 // ===== SOUND (synthesised, no files) + VIBRATION =====
 const AU:any={ctx:null,on:localStorage.getItem('sfc-snd')!=='0'};
 function audioInit(){if(AU.ctx){AU.ctx.resume&&AU.ctx.resume();return}const C=(window as any).AudioContext||(window as any).webkitAudioContext;if(!C)return;const x=new C();AU.ctx=x;AU.m=x.createGain();AU.m.gain.value=.55;AU.m.connect(x.destination);
@@ -245,10 +247,10 @@ const lb=(k,t)=>{document.querySelector('[data-k='+k+'] small').textContent=t};
 function ui(){const opp=s.own>=0&&s.ps[me]&&s.ps[s.own].t!==s.ps[me].t;const md=opp?1:(s.own>=0&&s.own!==me&&s.ps[s.own].t===s.ps[me].t)?2:0;if(md!==lastOpp){lastOpp=md;lb('pass',['Pass','Press','Call'][md]);lb('shoot',opp?'Tackle':'Shoot');lb('lob',opp?'Slide':'Lob');lb('thru',opp?'-':'Through')}const sh=s.mode==='shootout',tr=s.mode==='training',m=Math.max(0,Math.ceil(s.time));$('sa').textContent=s.score[0];$('sb').textContent=s.score[1];
  $('tm').textContent=tr?'FREE':Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('hf').textContent=sh?'ROUND '+Math.min(s.round,5)+' OF 5':tr?'TRAINING':s.golden?'GOLDEN GOAL':s.half===1?'1ST HALF':'2ND HALF';
  $('toast').style.display=s.pause>0&&s.msg==='Kickoff'?'block':'none';
- const txt=rep?'':s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg);let sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
+ const txt=connectionNotice|| (rep?'':s.over?'FULL TIME':(s.msg==='Kickoff'?'':s.msg));let sub=s.over?(sh?`${s.score[0]} / 5`:`${s.score[0]} - ${s.score[1]}`):(s.pause>0?s.sub||'':'');
  if(!s.over&&s.kind==='goal'&&s.pause>0&&s.sc>=0&&s.mode==='match')sub=`${nm(s.sc,s.st&&s.st[s.sc]&&s.st[s.sc].hu>10)}${s.og?' (OG)':''} ${s.mn}'${s.as>=0?' - assist '+nm(s.as,s.st&&s.st[s.as]&&s.st[s.as].hu>10):''} - ${s.sub}`;
  const key=txt+'|'+sub+'|'+s.kind+s.over;
- if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`:''}
+ if(key!==shown){shown=key;const mg=$('msg');mg.className='k-'+(connectionNotice||s.over?'info':s.kind||'info');mg.innerHTML=txt?`<span class="pop">${txt}</span><small>${sub}</small>`:''}
  if(s.over&&!sumT){sumT=setTimeout(()=>{if(s.over)showSummary()},2300)}else if(!s.over&&sumT){clearTimeout(sumT);sumT=0}}
 // ===== APP FLOW: name -> modes -> settings -> match =====
 const roomParam=new URLSearchParams(location.search).get('room');let roomUsed=false;const cfg={len:150,diff:1,field:'street',teams:[0,2]},CH=['KAZZ','Sharp Boy','Jagaban','Small Pele','Oga Striker','Zaki','Baller','Golden Boy'];
@@ -277,11 +279,13 @@ const teamRow=(side,cur,on)=>TEAMS.map((t,i)=>`<button class="chip${cur===i?' on
 // online lobby: coin toss between the two captains, winner picks the stadium; captains pick their own kit
 function lobby(){const c=lob,both=c.caps[0]>=0&&c.caps[1]>=0,chooser=me===c.chooser,host=me===c.host,mine=c.pl.find(p=>p.idx===me);
  let h=`<small>ROOM ${c.code}</small>`;
- if(c.phase==='wait')h+=`<h2>Finding players</h2><small>${c.pl.length}/10 in the room. Starting in ${c.eta}s, bots fill the empty spots.</small><div class="row">${c.pl.map(p=>`<span class="chip on">${p.nick}</span>`).join('')}</div>`;
+ if(c.phase==='wait')h+=`<h2>Finding players</h2><small>${c.pl.length}/10 in the room. Starting in ${c.eta}s, bots fill the empty spots.</small><div class="row">${c.pl.map(p=>`<span class="chip on${p.connected===false?' offl':''}">${p.nick}${p.connected===false?' · reconnecting':''}</span>`).join('')}</div>`;
  else if(c.phase==='lobby'){
-  h+=`<h2>Waiting room</h2><div class="row"><button class="chip" id="cl">Share invite link</button></div>`;
+  const ready=c.pl.filter((p:any)=>p.idx!==c.host&&p.ready).length,needed=c.pl.filter((p:any)=>p.idx!==c.host).length;
+  const invite=location.origin+location.pathname+'?room='+encodeURIComponent(c.code);
+  h+=`<h2>Waiting room</h2><small class="ready-count">${needed?`${ready} / ${needed} players ready`:'Invite friends to join your match'}</small><div class="invite-row"><button class="chip" id="cl">Share invite link</button><span>${invite}</span></div>`;
   h+=host?`<div class="row">${[['versus','Against each other'],['coop','Together vs bots']].map(([v,l])=>`<button class="chip${c.mode===v?' on':''}" data-mode="${v}">${l}</button>`).join('')}</div>`:`<small>${c.mode==='coop'?'Together vs bots':'Against each other'}</small>`;
-  const pr=(p:any)=>`<div class="pl${p.ready?' rd':''}${p.idx===me?' me':''}"><span>${p.idx===c.host?'&#9733; ':''}${p.nick}</span>${host&&p.idx!==me?`<button class="ic" data-host="${p.idx}" aria-label="Make host">&#9733;</button><button class="ic" data-kick="${p.idx}" aria-label="Kick">&#10005;</button>`:''}</div>`;
+  const pr=(p:any)=>`<div class="pl${p.ready?' rd':''}${p.idx===me?' me':''}${p.connected===false?' offl':''}"><span>${p.idx===c.host?'&#9733; ':''}${p.nick}${p.connected===false?' · reconnecting':''}</span>${host&&p.idx!==me?`<button class="ic" data-host="${p.idx}" aria-label="Make host">&#9733;</button><button class="ic" data-kick="${p.idx}" aria-label="Kick">&#10005;</button>`:''}</div>`;
   h+=`<div class="wr">${[0,1].map(sd=>`<div><small>${c.mode==='coop'?(sd?'Bots':'Your team'):'Team '+(sd?'B':'A')}</small>${c.mode==='coop'&&sd?'<div class="pl"><span>5 bots</span></div>':(c.pl.filter((p:any)=>(p.idx<5?0:1)===sd).map(pr).join('')||'<div class="pl"><span>-</span></div>')}</div>`).join('')}</div>`;
   if(c.mode==='versus')h+=`<button class="chip" id="sd">Switch my side</button>`;
   h+=host?`<button class="go" id="ls">Start match</button><small>Everyone else must tap Ready first.</small>`:`<button class="go" id="rd">${mine&&mine.ready?'Not ready':"I'm ready"}</button>`}
@@ -293,7 +297,7 @@ function lobby(){const c=lob,both=c.caps[0]>=0&&c.caps[1]>=0,chooser=me===c.choo
  $('menu').innerHTML=h+`<button class="chip" id="lv">Leave</button>`}
 function lobbyClick(b,d){if(d.d!==undefined){spinStep(b.closest('.sp').dataset.sp,+d.d,true);return true}if(d.fd)online.send('cfg',{field:d.fd});else if(d.t0!==undefined)online.send('cfg',{team:+d.t0,side:0});else if(d.t1!==undefined)online.send('cfg',{team:+d.t1,side:1});else if(d.call)online.send('call',{c:d.call});
  else if(d.mode)online.send('mode',{m:d.mode});else if(d.kick)online.send('kick',{idx:+d.kick});else if(d.host)online.send('host',{idx:+d.host});else if(b.id==='rd')online.send('rdy');else if(b.id==='sd')online.send('side');
- else if(b.id==='cl'){const url=location.origin+location.pathname+'?room='+lob.code;try{navigator.share?navigator.share({title:'Join my Street FC room',url}):navigator.clipboard.writeText(url);b.textContent='Link ready'}catch(e){b.textContent=url}}
+ else if(b.id==='cl'){const url=location.origin+location.pathname+'?room='+encodeURIComponent(lob.code),done=()=>{b.textContent='Link copied!';setTimeout(()=>{if(b.isConnected)b.textContent='Share invite link'},2200)},copy=()=>{if(navigator.clipboard?.writeText)navigator.clipboard.writeText(url).then(done).catch(()=>window.prompt('Copy this Street FB invite link',url));else window.prompt('Copy this Street FB invite link',url)};if(navigator.share)navigator.share({title:'Join my Street FB room',text:'Join my Street FB match',url}).then(()=>{b.textContent='Invite shared'}).catch(copy);else copy()}
  else if(b.id==='ls')online.send('start');else if(b.id==='lv'){const r=online;online=null;lob=null;r.leave();show('modes')}else return false;return true}
 $('menu').onclick=e=>{lockLand();audioInit();sfx.click();const b=e.target.closest('button');if(!b||b.disabled)return;const d=b.dataset;if(online&&lob&&lobbyClick(b,d))return;
  if(d.d!==undefined)spinStep(b.closest('.sp').dataset.sp,+d.d,false);else if(d.n)$('ni').value=d.n.toUpperCase();else if(d.l){cfg.len=+d.l;show('set')}else if(d.fd){cfg.field=d.fd;show('set')}else if(d.t0!==undefined){cfg.teams[0]=+d.t0;show('set')}else if(d.t1!==undefined){cfg.teams[1]=+d.t1;show('set')}else if(d.d){cfg.diff=+d.d;show('set')}else if(d.to)show(d.to);
@@ -307,12 +311,12 @@ function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);pingHud(n
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
-function wire(room:any){online=room;shown='';resetNet();const pi=setInterval(()=>{if(online===room)room.send('p',{t:performance.now()});else clearInterval(pi)},1500);room.send('p',{t:performance.now()});
+function wire(room:any){online=room;connectionNotice='';shown='';resetNet();const pi=setInterval(()=>{if(online===room)room.send('p',{t:performance.now()});else clearInterval(pi)},1500);room.send('p',{t:performance.now()});
  room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m,me));room.onMessage('q',(m:any)=>{const r=performance.now()-m.t;net.rtt=net.rtt?net.rtt*.7+r*.3:r});room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onMessage('sum',(d:any)=>{sumData=d;if(s.over)showSummary()});
  room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});
  room.onLeave(async(code:number)=>{if(online!==room)return;if(code===1000||code===4000){online=null;lob=null;show('modes');return}
-  for(let i=0;i<10;i++){$('msg').innerHTML='<span class="pop">RECONNECTING...</span>';await new Promise(r=>setTimeout(r,3000));try{wire(await reconnect());return}catch(e){}}
-  shown='';online=null;lob=null;show('modes')});
+  for(let i=0;i<24;i++){connectionNotice=`RECONNECTING · ${Math.max(0,Math.ceil(60-i*2.5))}s`;shown='';try{wire(await reconnect());return}catch(e){if(i<23)await new Promise(r=>setTimeout(r,2500))}}
+  connectionNotice='';shown='';online=null;lob=null;show('modes')});
  room.send('ready')}
 async function goOnline(code:string,how:string){const e:any=document.getElementById('oe')||{};e.textContent='Connecting...';
  try{s=mk();wire(await connect(nick,(code||'').toUpperCase().replace(/[^A-Z0-9]/g,'')||'QUICK',how))}

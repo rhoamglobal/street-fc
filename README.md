@@ -1,4 +1,4 @@
-# Street FC
+# Street FB
 npm install
 npm run dev          # client on :5173, game server on :2567
 
@@ -16,6 +16,7 @@ Vercel hosts the CLIENT only (static Vite build). The game server needs a long-l
 functions can't run, so host it on Fly.io / Railway / Render using the included Dockerfile:
   fly launch   (accept the Dockerfile, internal port 2567)  ->  wss://<app>.fly.dev
 Then in Vercel: import the repo (framework: Vite), add env var VITE_SERVER_URL=wss://<app>.fly.dev, redeploy.
+The Vite build also publishes the protected analytics page at `/admin.html`.
 
 ## Notes
 Clubs 0-7 colours follow an older RSSSF colours list; Rivers United and Remo Stars colours are guesses. Edit shared/data.ts.
@@ -25,6 +26,10 @@ Render: New > Blueprint > pick this repo (uses render.yaml). Copy the https URL,
 Railway: New Project > Deploy from GitHub repo (it uses the Dockerfile) > Settings > Networking > Generate Domain (port 2567 or leave default; the server reads PORT).
 Then Vercel: Import the repo (Vite), add VITE_SERVER_URL=wss://<your-server-host>, Deploy.
 Check: open https://<your-server-host>/matchmake/ in a browser. Seeing [] means the server is up (the bare / address shows nothing, that is normal).
+
+## Admin analytics
+Set `ADMIN_TOKEN` on the game server to a long random secret. Set `ADMIN_ORIGIN` to the exact public origin that serves the game/admin page (for example `https://street-fb.vercel.app`). On Render, the Blueprint asks for both values because they are marked `sync: false`.
+Open `https://<your-game-site>/admin.html` and enter the token. The page refreshes every 10 seconds and shows connected players, active rooms, live matches, waiting rooms, server uptime, and runtime join/match totals. Counts are held in memory and reset when the server restarts; player names and addresses are not collected. In local development, the dashboard at `http://localhost:5173/admin.html` reads the server at port 2567.
 
 ## Online modes
 Quick match: 12s countdown then auto-start, bots fill empty slots, late joiners take over a bot.

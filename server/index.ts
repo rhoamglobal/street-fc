@@ -2,6 +2,8 @@ import { Server, Room, Client } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { mk, step, ai, NOACT, summary } from '../shared/sim';
 import { TEAMS, FIELDS } from '../shared/data';
+import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 
 // Two kinds of room:
 //  quick   : phase wait (countdown, bots fill in) -> play. Late joiners can take over a bot slot.
@@ -9,9 +11,12 @@ import { TEAMS, FIELDS } from '../shared/data';
 const LAG = Number(process.env.LAG) || 0; // dev only: LAG=100 simulates ~200ms round trip
 const later = (f: () => void) => (LAG ? setTimeout(f, LAG) : f());
 const QUICK_WAIT = 12000, LEN = Number(process.env.LEN) || 150;
+const activeRooms = new Set<any>();
+const bootedAt = Date.now();
+let joinsSinceBoot = 0, matchesSinceBoot = 0;
 class MatchRoom extends Room {
   maxClients = 10;
-  s: any; afk = new Set<number>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
+  s: any; afk = new Set<number>(); disconnected = new Set<string>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
   held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; nk = 0; nsig = ''; code = 'QUICK'; waitUntil = 0; lastPub = 0;
   cfg: any = { kind: 'private', phase: 'lobby', mode: 'versus', field: 'street', teams: [0, 2], caps: [-1, -1], chooser: -1, caller: -1, toss: null, host: -1, eta: 0 };
   names() { return this.cfg.teams.map((i: number) => TEAMS[i].sh); }
@@ -27,7 +32,7 @@ class MatchRoom extends Room {
   pub() {
     const c = this.cfg, h = this.order[0];
     c.host = h ? this.slots.get(h) : -1;
-    const pl = this.order.map(id => { const k = this.slots.get(id)!; return { idx: k, nick: this.nicks[k], ready: id === h || this.rdy.has(id) }; });
+    const pl = this.order.map(id => { const k = this.slots.get(id)!; return { idx: k, nick: this.nicks[k], ready: id === h || this.rdy.has(id), connected: !this.disconnected.has(id) }; });
     for (const cl of this.clients) if (this.ready.has(cl.sessionId)) cl.send('cfg', { ...c, code: this.code, pl });
   }
   reconf() {
@@ -40,9 +45,10 @@ class MatchRoom extends Room {
   }
   regroup() { const ids = [...this.order]; const old = [...this.nicks]; const o = new Map(this.slots); this.slots.clear(); this.nicks = Array(10).fill('');
     for (const id of ids) { const k = this.assign(id); this.nicks[k] = old[o.get(id)!]; this.clients.find(c => c.sessionId === id)?.send('you', { idx: k }); } }
-  startMatch() { this.s = mk({ len: LEN, names: this.names() }); this.cfg.phase = 'play'; this.overAt = 0; }
+  startMatch() { this.s = mk({ len: LEN, names: this.names() }); this.cfg.phase = 'play'; this.overAt = 0; for (const id of this.disconnected) { const k = this.slots.get(id); if (k !== undefined) this.afk.add(k); } matchesSinceBoot++; }
   startQuick() { const c = this.cfg, r = () => Math.random() * TEAMS.length | 0; c.field = FIELDS[Math.random() * FIELDS.length | 0].id; const a = r(); let b = r(); if (b === a) b = (a + 1) % TEAMS.length; c.teams = [a, b]; this.startMatch(); this.pub(); }
   onCreate(o: any) {
+    activeRooms.add(this);
     this.code = String(o.code || 'QUICK'); this.cfg.kind = o.kind === 'quick' ? 'quick' : 'private'; this.cfg.phase = this.cfg.kind === 'quick' ? 'wait' : 'lobby';
     this.setMetadata({ code: this.code }); this.s = mk({ len: LEN, names: this.names() });
     for (let i = 0; i < 10; i++) { this.held[i] = {}; this.latch[i] = {}; }
@@ -65,8 +71,10 @@ class MatchRoom extends Room {
     this.onMessage('side', (c) => { const k = me(c); if (this.cfg.phase !== 'lobby' || this.cfg.mode !== 'versus' || k === undefined) return;
       const i = this.free(k < 5 ? 1 : 0); if (i === undefined) return; const nk = (k < 5 ? 1 : 0) * 5 + i;
       this.slots.set(c.sessionId, nk); this.nicks[nk] = this.nicks[k]; this.nicks[k] = ''; this.held[nk] = {}; this.latch[nk] = {}; c.send('you', { idx: nk }); this.reconf(); });
-    this.onMessage('kick', (c, m) => { if (this.cfg.phase !== 'lobby' || c.sessionId !== this.order[0]) return; const id = this.byIdx(Number(m?.idx)); if (!id || id === c.sessionId) return; this.clients.find(x => x.sessionId === id)?.leave(); });
-    this.onMessage('host', (c, m) => { if (c.sessionId !== this.order[0]) return; const id = this.byIdx(Number(m?.idx)); if (!id) return; this.order = [id, ...this.order.filter(x => x !== id)]; this.reconf(); });
+    this.onMessage('kick', (c, m) => { if (this.cfg.phase !== 'lobby' || c.sessionId !== this.order[0]) return; const id = this.byIdx(Number(m?.idx)); if (!id || id === c.sessionId) return;
+      const target = this.clients.find(x => x.sessionId === id); if (target) target.leave(); else if (this.disconnected.has(id)) { const k = this.slots.get(id); this.slots.delete(id); this.ready.delete(id); this.rdy.delete(id); this.disconnected.delete(id); this.order = this.order.filter(x => x !== id); if (k !== undefined) { this.nicks[k] = ''; this.afk.delete(k); } this.reconf(); }
+    });
+    this.onMessage('host', (c, m) => { if (c.sessionId !== this.order[0]) return; const id = this.byIdx(Number(m?.idx)); if (!id || this.disconnected.has(id)) return; this.order = [id, ...this.order.filter(x => x !== id)]; this.reconf(); });
     // ---- coin toss + stadium/kit setup (see reconf)
     this.onMessage('call', (c, m) => { // heads/tails: caller wins if the coin matches, otherwise the other captain
       const k = me(c), g = this.cfg; if (g.phase !== 'toss' || k !== g.caller || !['H', 'T'].includes(m?.c)) return;
@@ -83,7 +91,7 @@ class MatchRoom extends Room {
     });
     this.onMessage('start', (c) => {
       const g = this.cfg, k = me(c);
-      if (g.phase === 'lobby') { if (c.sessionId !== this.order[0] || !this.order.slice(1).every(x => this.rdy.has(x))) return; g.phase = 'setup'; g.toss = null; this.lock(); this.reconf(); return; }
+      if (g.phase === 'lobby') { if (c.sessionId !== this.order[0] || !this.order.slice(1).every(x => this.rdy.has(x) || this.disconnected.has(x))) return; g.phase = 'setup'; g.toss = null; this.lock(); this.reconf(); return; }
       if (g.phase !== 'setup' || k !== g.chooser) return; this.startMatch(); this.pub();
     });
     let acc = 0, snap = 0;
@@ -106,7 +114,7 @@ class MatchRoom extends Room {
       if (!this.overAt) { this.overAt = Date.now(); this.broadcast('sum', summary(s)); } // full-time report, then back to the lobby after 20s
       else if (Date.now() - this.overAt > 20000) {
         this.overAt = 0;
-        if (c.kind === 'quick') this.s = mk({ len: LEN, names: this.names() });
+        if (c.kind === 'quick') { this.s = mk({ len: LEN, names: this.names() }); matchesSinceBoot++; }
         else { c.phase = 'lobby'; c.toss = null; this.rdy.clear(); this.afk.clear(); this.s = mk({ len: LEN, names: this.names() }); this.unlock(); this.pub(); } // rematch: back to the waiting room
       }
       return;
@@ -116,16 +124,28 @@ class MatchRoom extends Room {
     for (const k of hum) this.latch[k] = {};
   }
   onJoin(c: Client, o: any) {
+    joinsSinceBoot++;
     const k = this.assign(c.sessionId); this.order.push(c.sessionId);
+    if (this.disconnected.has(this.order[0])) this.order = [c.sessionId, ...this.order.filter(id => id !== c.sessionId)];
     let nm = String(o?.nick || 'PLAYER').replace(/[^\w ]/g, '').trim().slice(0, 14).toUpperCase() || 'PLAYER'; const base = nm; let n = 2;
     while (this.nicks.includes(nm)) nm = base.slice(0, 12) + ' ' + n++; // two players can't share a name in one match
     this.nicks[k] = nm;
     this.reconf();
   }
-  async onLeave(c: Client, consented: boolean) { // dropped connection during a match: a bot covers for up to 60s
+  onDispose() { activeRooms.delete(this); }
+  async onLeave(c: Client, consented: boolean) { // hold a dropped player's seat for up to 60 seconds
     const k = this.slots.get(c.sessionId);
-    if (!consented && k !== undefined && this.cfg.phase === 'play') { this.afk.add(k); try { await this.allowReconnection(c, 60); this.afk.delete(k); return; } catch { } }
-    this.slots.delete(c.sessionId); this.ready.delete(c.sessionId); this.rdy.delete(c.sessionId); this.order = this.order.filter(x => x !== c.sessionId);
+    if (!consented && k !== undefined) {
+      this.disconnected.add(c.sessionId);
+      if (this.cfg.phase === 'play') this.afk.add(k);
+      else {
+        const nextHost = this.order.find(id => id !== c.sessionId && !this.disconnected.has(id));
+        if (this.order[0] === c.sessionId && nextHost) this.order = [nextHost, ...this.order.filter(id => id !== nextHost)];
+        this.pub();
+      }
+      try { await this.allowReconnection(c, 60); this.disconnected.delete(c.sessionId); this.afk.delete(k); if (this.cfg.phase !== 'play') this.pub(); return; } catch { }
+    }
+    this.disconnected.delete(c.sessionId); this.slots.delete(c.sessionId); this.ready.delete(c.sessionId); this.rdy.delete(c.sessionId); this.order = this.order.filter(x => x !== c.sessionId);
     if (k !== undefined) { this.nicks[k] = ''; this.afk.delete(k); }
     this.reconf();
   }
@@ -140,6 +160,55 @@ class MatchRoom extends Room {
       p: s.ps.map((p: any) => [r(p.x), r(p.y), r(p.vx), r(p.vy), +p.fx.toFixed(2), +p.fy.toFixed(2), p.stun > 0 ? 1 : 0, p.sh ? 1 : 0, p.run ? 1 : 0, +p.st.toFixed(2), (p.sl > 0 ? 1 : 0) + (p.kk > 0 ? 2 : 0)]), n: this.nickPart() };
   }
 }
-const server = new Server({ transport: new WebSocketTransport() });
+function adminStats() {
+  const rooms = [...activeRooms].map((room: any) => ({
+    roomId: room.roomId,
+    type: room.cfg.kind === 'quick' ? 'Quick match' : 'Private room',
+    phase: room.cfg.phase,
+    players: room.clients.length,
+    capacity: room.maxClients,
+    field: room.cfg.field,
+    mode: room.cfg.mode,
+  }));
+  return {
+    capturedAt: new Date().toISOString(),
+    uptimeSeconds: Math.floor((Date.now() - bootedAt) / 1000),
+    onlinePlayers: rooms.reduce((sum, room) => sum + room.players, 0),
+    activeRooms: rooms.length,
+    matchesInProgress: rooms.filter(room => room.phase === 'play').length,
+    playersInMatches: rooms.filter(room => room.phase === 'play').reduce((sum, room) => sum + room.players, 0),
+    waitingRooms: rooms.filter(room => room.phase !== 'play').length,
+    joinsSinceBoot,
+    matchesStartedSinceBoot: matchesSinceBoot,
+    rooms,
+  };
+}
+
+const adminToken = process.env.ADMIN_TOKEN || '';
+const adminOrigin = process.env.ADMIN_ORIGIN || '';
+const httpServer = createServer((req, res) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  if (url.pathname !== '/admin/analytics') return;
+
+  const origin = req.headers.origin || '';
+  const devOrigin = process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1):5173$/.test(origin);
+  const originAllowed = !origin || origin === adminOrigin || devOrigin;
+  if (origin && originAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  if (!originAllowed) { res.writeHead(403); res.end('Origin not allowed'); return; }
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET, OPTIONS' }); res.end(); return; }
+  if (!adminToken) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Admin analytics are disabled. Configure ADMIN_TOKEN on the game server.' })); return; }
+  const supplied = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const a = Buffer.from(supplied), b = Buffer.from(adminToken);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid admin token.' })); return; }
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(adminStats()));
+});
+const server = new Server({ transport: new WebSocketTransport({ server: httpServer }) });
 server.define('match', MatchRoom).filterBy(['code']);
-server.listen(Number(process.env.PORT) || 2567).then(() => console.log('Street FC server listening on :' + (process.env.PORT || 2567)));
+server.listen(Number(process.env.PORT) || 2567).then(() => console.log('Street FB server listening on :' + (process.env.PORT || 2567)));
