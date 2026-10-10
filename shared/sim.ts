@@ -7,7 +7,7 @@ export const W=1000,H=560,GOAL=90,R=15,BR=8;
 export const HOME=[[160,.5],[290,.2],[290,.8],[430,.35],[430,.65]]; // no keepers
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function norm(x,y){const m=Math.hypot(x,y)||1;return[x/m,y/m]}
-export function mk(o){o=o||{};const ps=[];for(let t=0;t<2;t++)HOME.forEach((h,i)=>{const hx=t?W-h[0]:h[0],hy=h[1]*H;ps.push({t,i,x:hx,y:hy,hx,hy,vx:0,vy:0,fx:t?-1:1,fy:0,cd:0,stun:0,st:1,sh:false,off:false,pk:0,run:false,sl:0,kk:0,cl:0})});
+export function mk(o){o=o||{};const ps=[];for(let t=0;t<2;t++)HOME.forEach((h,i)=>{const hx=t?W-h[0]:h[0],hy=h[1]*H;ps.push({t,i,x:hx,y:hy,hx,hy,vx:0,vy:0,fx:t?-1:1,fy:0,cd:0,stun:0,st:1,sh:false,off:false,pk:0,run:false,sl:0,kk:0,cl:0,firstTouch:1,firstTouchT:0})});
  const s={ps,ball:{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0},score:[0,0],half:1,pause:2,over:false,msg:'Kickoff',kind:'info',sub:'',gt:-1,freeze:0,taker:-1,gk:-1,gkT:0,fcd:0,names:o.names||['HOME','AWAY'],golden:!!o.golden,rcvH:1,rcv:-1,rcvT:0,trap:0,st:ps.map(()=>({g:0,a:0,sh:0,pa:0,pc:0,tk:0,ic:0,fl:0,og:0,hu:0})),poss:[0,0],ev:[],last:-1,prev:-1,pend:-1,po:-1,sc:-1,as:-1,og:0,mn:0,mode:o.mode||'match',len:o.len||150,diff:o.diff||1,round:1,me:4,own:-1};
  s.time=s.len;if(s.golden)s.half=2;if(s.mode==='shootout'){s.time=8;skpos(s);s.msg='Round 1'}if(s.mode==='training')s.time=1e9;return s}
 export function skpos(s){s.ps.forEach((p,k)=>{p.off=!(k===s.me||k===5);p.vx=p.vy=0;p.stun=0;p.cd=0});const m=s.ps[s.me],d=s.ps[5];m.x=W*.58;m.y=H/2+(Math.random()-.5)*220;m.fx=1;m.fy=0;d.x=W-230;d.y=H/2;Object.assign(s.ball,{x:m.x+22,y:m.y,vx:0,vy:0});s.own=s.me}
@@ -52,7 +52,7 @@ export function step(s,inp,dt){
  s.time-=dt;if(s.freeze>0)s.freeze-=dt;if(s.gkT>0)s.gkT-=dt;s.fcd=Math.max(0,s.fcd-dt);if(s.rcvT>0)s.rcvT-=dt;if(s.trap>0)s.trap-=dt;
  if(s.time<=0){if(s.mode==='shootout')return rnd(s,pick(MISS),'info');if(s.half===1){s.half=2;s.time=s.len;s.msg='Half time';reset(s);s.pause=2.5}else{s.time=0;s.over=true}return}
  const b=s.ball;
- s.ps.forEach((p,k)=>{if(p.off)return;p.sl=Math.max(0,p.sl-dt);p.cl=Math.max(0,p.cl-dt);p.kk=Math.max(0,p.kk-dt);if(s.freeze>0&&k!==s.taker&&k!==s.gk){p.vx=p.vy=0;return}const u=inp[k];if(u.h)s.st[k].hu+=dt;if(u.call&&s.own>=0&&s.own!==k&&s.ps[s.own].t===p.t)p.cl=1.4,p.ca=u.ai?1:0;p.cd=Math.max(0,p.cd-dt);p.pk=Math.max(0,p.pk-dt);p.stun=Math.max(0,p.stun-dt);
+ s.ps.forEach((p,k)=>{if(p.off)return;p.sl=Math.max(0,p.sl-dt);p.cl=Math.max(0,p.cl-dt);p.kk=Math.max(0,p.kk-dt);p.firstTouchT=Math.max(0,(p.firstTouchT||0)-dt);if(s.freeze>0&&k!==s.taker&&k!==s.gk){p.vx=p.vy=0;return}const u=inp[k];if(u.h)s.st[k].hu+=dt;if(u.call&&s.own>=0&&s.own!==k&&s.ps[s.own].t===p.t)p.cl=1.4,p.ca=u.ai?1:0;p.cd=Math.max(0,p.cd-dt);p.pk=Math.max(0,p.pk-dt);p.stun=Math.max(0,p.stun-dt);
   let mx=u.mx,my=u.my;let m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}if(u.press&&s.own>=0&&s.ps[s.own].t!==p.t){const c=s.ps[s.own],[ex,ey]=norm(c.x-p.x,c.y-p.y);mx=ex*.8+mx*.4;my=ey*.8+my*.4;m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}} // press: auto-close the carrier
   const run=!!(u.sprint&&p.st>.05&&m>.2),has=s.own===k;p.run=run;p.st=clamp(p.st+(run?-.35:.12)*dt,0,1);p.sh=!!u.shield;
   const sp=(run?250:u.press?215:180)*(has?.93:1)*(u.h?1:.94)*(p.t?s.diff:1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?7:10));
@@ -64,29 +64,28 @@ export function step(s,inp,dt){
    if((has||d<R+BR+(s.own<0?24:10))&&act){let ax,ay,pw;
     if(act===1){[ax,ay]=shootDir(p,!u.h);const e=(Math.random()-.5)*(run?.16:.08)*(1+u.shoot*.8),c=Math.cos(e),sn=Math.sin(e);[ax,ay]=[ax*c-ay*sn,ax*sn+ay*c];pw=480+470*u.shoot}
     else{const t=u.to||pickMate(p,s);if(t){s.rcv=s.ps.indexOf(t);s.rcvT=2.4;s.rcvH=act===5?.35:1}let X,Y;if(t){const l=act===5?.9:act===4?.5:.3;X=t.x+t.vx*l;Y=t.y+t.vy*l;if(act===5&&Math.hypot(t.vx,t.vy)<30)X+=(p.t?-1:1)*70}else{X=p.x+p.fx*160;Y=p.y+p.fy*160}
-     const dd=Math.hypot(X-p.x,Y-p.y);[ax,ay]=norm(X-p.x,Y-p.y);pw=act===3?clamp(dd*2.4,300,500):act===5?clamp(dd*2.6,380,640):clamp(dd*2.8,420,760);if(act===4)b.vh=Math.min(300,150+dd*.6)}
+     const dd=Math.hypot(X-p.x,Y-p.y);[ax,ay]=norm(X-p.x,Y-p.y);pw=act===3?clamp(dd*2.4,300,500):act===5?clamp(dd*2.6,380,640):clamp(dd*2.8,420,760);if(act===4)b.vh=Math.min(300,150+dd*.6);const err=(Math.random()-.5)*(act===4?.12:act===5?.065:.035)*(1+dd/500),co=Math.cos(err),sn=Math.sin(err);[ax,ay]=[ax*co-ay*sn,ax*sn+ay*co]}
     b.vx=ax*pw;b.vy=ay*pw;p.cd=.4;p.pk=.35;p.kk=.25;s.own=-1;touch(s,k);s.po=-1;if(act===1){s.st[k].sh++;s.pend=-2}else{s.st[k].pa++;s.pend=k}}
    else if(u.skill){p.cd=1.2;p.vx+=p.fx*320;p.vy+=p.fy*320;if(has){s.own=-1;p.pk=.12;b.vx=p.fx*360;b.vy=p.fy*360}}
    else if(u.slide){p.cd=1.1;p.sl=.5;p.vx+=p.fx*430;p.vy+=p.fy*430;const o=s.own>=0?s.ps[s.own]:null; // slide: long reach, risky, can be a foul
     if(o&&o.t!==p.t&&Math.hypot(o.x-p.x,o.y-p.y)<2*R+48){const won=Math.random()<(o.sh?.3:.75);if(s.mode==='match'&&s.fcd<=0&&p.fx*o.fx+p.fy*o.fy>.5&&Math.random()<.9){p.stun=.8;callFoul(s,k,s.own);return}if(won){s.own=k;o.stun=.5;o.pk=.6;p.pk=0}else p.stun=.6}else p.stun=.6}
    else if(u.tackle){p.cd=.7;p.vx+=p.fx*240;p.vy+=p.fy*240;const o=s.own>=0?s.ps[s.own]:null;
-    if(o&&o.t!==p.t){if(Math.hypot(o.x-p.x,o.y-p.y)<2*R+24){const behind=p.fx*o.fx+p.fy*o.fy>.6,blk=Math.random()<(o.sh?.7:.12);
-      
-      if(blk)p.stun=.4;else{s.own=k;o.stun=.45;o.pk=.6;p.pk=0}}}
+    if(o&&o.t!==p.t){if(Math.hypot(o.x-p.x,o.y-p.y)<2*R+24){const behind=p.fx*o.fx+p.fy*o.fy>.6,blk=Math.random()<(o.sh?.7:.12),won=Math.random()<(behind?.72:.9);
+      if(blk){p.stun=.4;o.stun=.15}else if(won){s.own=k;o.stun=.45;o.pk=.6;p.pk=0}else{p.stun=.28}}}
     else if(!o&&b.h<20&&d<R+BR+26){s.own=k}} // poke a loose ball
 
   }
  });
  for(let i=0;i<10;i++)for(let j=i+1;j<10;j++){const a=s.ps[i],c=s.ps[j];if(a.off||c.off)continue;let dx=c.x-a.x,dy=c.y-a.y;const d=Math.hypot(dx,dy);if(d>0&&d<2*R){const o=(2*R-d)/2;dx/=d;dy/=d;a.x-=dx*o;a.y-=dy*o;c.x+=dx*o;c.y+=dy*o}}
  // Keep possession at the player's feet; sprinting moves the ball slightly farther ahead.
- if(s.own>=0){const o=s.ps[s.own];if(o.off||o.stun>0)s.own=-1;else{const lead=R+BR+(o.run?9:3),k2=Math.min(1,dt*(s.trap>0?9:16));b.x+=(o.x+o.fx*lead-b.x)*k2;b.y+=(o.y+o.fy*lead-b.y)*k2;b.vx=o.vx;b.vy=o.vy;b.h=b.vh=0}}
+ if(s.own>=0){const o=s.ps[s.own];if(o.off||o.stun>0)s.own=-1;else{const quality=o.firstTouchT>0?o.firstTouch:1,lead=R+BR+(o.run?9:3)+(1-quality)*24,k2=Math.min(1,dt*(s.trap>0?9:16)*(.72+.28*quality));b.x+=(o.x+o.fx*lead-b.x)*k2;b.y+=(o.y+o.fy*lead-b.y)*k2;b.vx=o.vx;b.vy=o.vy;b.h=b.vh=0}}
  if(s.own<0&&(b.h>0||b.vh>0)){b.vh-=720*dt;b.h+=b.vh*dt;if(b.h<=0){b.h=0;b.vh=b.vh<-140?-b.vh*.3:0}}
  if(s.own<0){const bs=Math.hypot(b.vx,b.vy);let bi=-1,bd=1e9;
-  s.ps.forEach((p,k)=>{const rc=k===s.rcv&&s.rcvT>0;if(p.off||(p.pk>0&&!rc)||p.stun>0)return;const d=Math.hypot(b.x-p.x,b.y-p.y),dd=rc?d-20:d;if(b.h<24&&d<R+BR+(rc?24:8)&&dd<bd){bd=dd;bi=k}}); // the intended receiver gets a bigger, stickier first touch
-  if(bi>=0&&(bs<520||(bi===s.rcv&&bs<800))){if(bi===s.rcv)s.trap=.3;s.own=bi;s.rcv=-1}if(bi>=0&&bs<520)s.own=bi;
+  s.ps.forEach((p,k)=>{const rc=k===s.rcv&&s.rcvT>0;if(p.off||(p.pk>0&&!rc)||p.stun>0)return;const d=Math.hypot(b.x-p.x,b.y-p.y),dd=rc?d-10:d;if(b.h<24&&d<R+BR+(rc?16:8)&&dd<bd){bd=dd;bi=k}}); // the intended receiver gets a small first-touch allowance
+  if(bi>=0&&(bs<520||(bi===s.rcv&&bs<650))){const p=s.ps[bi],incoming=bs?((b.vx*p.fx+b.vy*p.fy)/bs):0,control=clamp(1-(bs-160)/560+(incoming<0?.14:0)+(p.sh?.12:0)-(p.run?.18:0),.2,.96);p.firstTouch=control;p.firstTouchT=.24;if(bi===s.rcv)s.trap=.3;s.own=bi;s.rcv=-1}if(bi>=0&&bs<520)s.own=bi;
   else s.ps.forEach(p=>{if(p.off)return;const dx=b.x-p.x,dy=b.y-p.y,d=Math.hypot(dx,dy)||1;if(d<R+BR&&b.h<24){const nx=dx/d,ny=dy/d;b.x=p.x+nx*(R+BR);b.y=p.y+ny*(R+BR);const rel=(b.vx-p.vx)*nx+(b.vy-p.vy)*ny;if(rel<0){b.vx-=rel*nx*1.3;b.vy-=rel*ny*1.3}}});
   if(s.rcv>=0&&s.rcvT>0){const q=s.ps[s.rcv],sp0=Math.hypot(b.vx,b.vy);if(!q.off&&sp0>120){ // assisted pass: the ball bends toward its receiver, so moving off before it arrives doesn't lose it
-   const ld=s.rcvH<1?.9:.25,[dx0,dy0]=norm(q.x+q.vx*ld-b.x,q.y+q.vy*ld-b.y),dq=Math.hypot(q.x-b.x,q.y-b.y),near=dq<95,kk=Math.min(1,dt*(near?11:4)*s.rcvH),ux=b.vx/sp0,uy=b.vy/sp0;let nx=ux+(dx0-ux)*kk,ny=uy+(dy0-uy)*kk;const nn=Math.hypot(nx,ny)||1,sp1=near?Math.max(170,Math.min(sp0,dq*5)):Math.max(sp0,200);b.vx=nx/nn*sp1;b.vy=ny/nn*sp1}}
+   const ld=s.rcvH<1?.9:.25,[dx0,dy0]=norm(q.x+q.vx*ld-b.x,q.y+q.vy*ld-b.y),dq=Math.hypot(q.x-b.x,q.y-b.y),near=dq<95,ux=b.vx/sp0,uy=b.vy/sp0,path=clamp(ux*dx0+uy*dy0,0,1),assist=s.rcvH*(.08+.42*path),kk=Math.min(1,dt*(near?11:4)*assist);let nx=ux+(dx0-ux)*kk,ny=uy+(dy0-uy)*kk;const nn=Math.hypot(nx,ny)||1,sp1=near?Math.max(170,Math.min(sp0,dq*5)):Math.max(sp0,200);b.vx=nx/nn*sp1;b.vy=ny/nn*sp1}}
  b.x+=b.vx*dt;b.y+=b.vy*dt;const f=Math.pow(.3,dt);b.vx*=f;b.vy*=f}
  if(s.own>=0&&s.own!==s.po){const o=s.own,po=s.po;touch(s,o); // new owner: pass completed / intercepted / tackle won
   if(s.pend>=0&&o!==s.pend){if(s.ps[s.pend].t===s.ps[o].t)s.st[s.pend].pc++;else s.st[o].ic++}
@@ -112,7 +111,7 @@ export function ai(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?
  else if(car&&car.t===p.t){tx=clamp(p.hx+(car.x-W/2)*.55+d*70,60,W-60);ty=clamp(p.hy+(car.y-H/2)*.35,40,H-40);u.sprint=dist(p,tx,ty)>120?1:0;if(dist(p,car.x,car.y)<300&&(p.x-car.x)*d>40&&opps.every(o=>dist(o,p.x,p.y)>70)&&Math.random()<.01){u.call=1;u.ai=1}}
  else if(car){const rank=by(car.x,car.y).indexOf(p);
   if(rank===0&&dist(p,car.x,car.y)<320){tx=car.x;ty=car.y;const dc=dist(p,car.x,car.y);u.sprint=dc>90?1:0;if(dc<2*R+12&&Math.random()<.018)u.tackle=1}
-  else if(rank===1){tx=car.x+(ogx-car.x)*.3;ty=car.y+(H/2-car.y)*.3}
-  else{const ms=opps.filter(o=>o!==car),o=ms[p.i%ms.length]||car;tx=o.x+(ogx-o.x)*.25;ty=o.y+(H/2-o.y)*.1}}
+  else if(rank===1){const options=opps.filter(q=>q!==car),target=options.sort((a,c)=>{const open=q=>Math.min(...mates.map(m=>dist(m,q.x,q.y)));return(dist(a,car.x,car.y)-open(a)*.35)-(dist(c,car.x,car.y)-open(c)*.35)})[0];if(target){tx=(car.x+target.x)*.5;ty=(car.y+target.y)*.5+(H/2-target.y)*.08}else{tx=car.x+(ogx-car.x)*.3;ty=car.y+(H/2-car.y)*.3}}
+  else{const ms=opps.filter(o=>o!==car),ordered=ms.slice().sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y)),o=ordered[0]||car;tx=o.x+(ogx-o.x)*.25;ty=o.y+(H/2-o.y)*.1}}
  else{if(by(b.x,b.y)[0]===p||(s.rcv===k&&s.rcvT>0)){tx=b.x+b.vx*.2;ty=b.y+b.vy*.2;u.sprint=dist(p,b.x,b.y)>60?1:0}else{tx=p.hx+(b.x-W/2)*.4;ty=p.hy+(b.y-H/2)*.3}}
  const dx=tx-p.x,dy=ty-p.y,dd=Math.hypot(dx,dy);if(dd>8){u.mx=dx/dd;u.my=dy/dd}return u}
