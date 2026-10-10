@@ -124,3 +124,19 @@ body.pad #zone,body.pad #btns,body.pad #sw{display:none!important}body.pad #hint
 /* ---- tidy HUD: sound button top-left under ping; replay tag top-centre ---- */
 #snd{right:auto;left:10px;top:calc(26px + env(safe-area-inset-top,0px));height:26px;padding:0 10px;font-size:11px}
 #rep{left:50%;transform:translateX(-50%)}
+
+/* Street FB menu skin and accessible first-match guide */
+#menu:before{content:"";display:block;flex:0 0 64px;width:64px;height:64px;margin:12px auto 2px;background:url('/favicon.png') center/contain no-repeat;filter:drop-shadow(0 0 14px #c6ff3d88)}
+#menu h2{color:#c6ff3d;text-shadow:0 2px 0 #0b1226,0 0 18px #c6ff3d35}
+#menu .card{border:1px solid #52669e;border-bottom:4px solid #c6ff3d;border-radius:14px;background:linear-gradient(145deg,#ffffff12,#0b122688);box-shadow:0 8px 24px #0003;transition:transform .16s,border-color .16s,box-shadow .16s}
+#menu .card:hover,#menu .card:focus-visible{transform:translateY(-3px);border-color:#c6ff3d;box-shadow:0 0 0 1px #c6ff3d55,0 12px 28px #0006}
+#menu .go{border-radius:9px;box-shadow:0 5px 0 #7da621,0 10px 22px #0005;transition:transform .12s,filter .12s}
+#menu .go:active{transform:translateY(2px);box-shadow:0 3px 0 #7da621}
+#menu .chip{transition:background .14s,border-color .14s,color .14s}#menu .chip:hover{border-color:#c6ff3d;background:#c6ff3d18}
+#menu .help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(94vw,680px);text-align:left;font:13px Arial,sans-serif}
+#menu .help-grid section{display:grid;grid-template-columns:minmax(92px,.7fr) 1.3fr;gap:9px;align-items:center;padding:14px;border:1px solid #52669e;border-radius:12px;background:linear-gradient(145deg,#ffffff12,#0b122688)}
+#menu .help-grid b{color:#c6ff3d;font-size:10px;letter-spacing:1px}#menu .help-grid span{color:#eef3ff;font-size:12px}
+#tut{max-width:min(88vw,560px);background:rgba(11,18,38,.94);border:1px solid #c6ff3d;border-left:4px solid #c6ff3d;border-radius:12px;padding:9px 12px;box-shadow:0 8px 28px #0008;pointer-events:auto}
+#tut button{margin-top:6px;border:1px solid #52669e;border-radius:20px;background:#111d40;color:#eef3ff;padding:5px 12px;font:700 11px Arial,sans-serif;cursor:pointer}
+@media(max-width:540px){#menu .help-grid{grid-template-columns:1fr}#menu:before{flex-basis:48px;width:48px;height:48px;margin:4px auto 0}}
+#ping{padding:5px 9px;border:1px solid #c6ff3d66;border-radius:20px;background:#0b1226dd;box-shadow:0 4px 14px #0005;letter-spacing:.4px}

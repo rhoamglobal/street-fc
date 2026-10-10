@@ -11,7 +11,7 @@ export async function connect(nick: string, code: string, how: string) {
   return room;
 }
 export async function reconnect() { const t = sessionStorage.getItem('sfc-token'); if (!client || !t) throw new Error('no token'); const r = await client.reconnect(t); sessionStorage.setItem('sfc-token', r.reconnectionToken); return r; }
-export function resetNet() { net.buf.length = 0; net.pp = null; }
+export function resetNet() { net.buf.length = 0; net.pp = null; net.rtt = 0; }
 export function applySnap(s: any, m: any, me: number) {
   net.buf.push({ t: performance.now(), p: m.p, b: m.b }); while (net.buf.length > 14) net.buf.shift();
   s.time = m.t; s.half = m.h; s.score = m.sc; s.msg = m.m; s.pause = m.pa; s.over = !!m.ov; s.own = m.o; if (m.n) s.nicks = m.n;
@@ -40,6 +40,7 @@ export function netTick(s: any, dt: number, hu: any, me: number) {
   if (predict) { moveStep(pp, hu, s, dt, me); mp.x = pp.x; mp.y = pp.y; mp.vx = pp.vx; mp.vy = pp.vy; mp.fx = pp.fx; mp.fy = pp.fy; }
   else if (pp) { pp.x = mp.x; pp.y = mp.y; }
   const bb = s.ball; let tx = A.b[0] + (B.b[0] - A.b[0]) * f, ty = A.b[1] + (B.b[1] - A.b[1]) * f;
-  if (predict && s.own === me) { const lead = 23 + (hu.sprint ? 9 : 3); tx = mp.x + mp.fx * lead; ty = mp.y + mp.fy * lead; } // ball stays glued to your feet
+  // Keep server ball control authoritative; only extrapolate its recent motion by at most 45 ms.
+  if (predict && s.own === me) { const horizon = Math.min(.045, net.rtt / 2000); tx += A.b[2] * horizon; ty += A.b[3] * horizon; }
   const kk = Math.min(1, dt * 20); bb.x += (tx - bb.x) * kk; bb.y += (ty - bb.y) * kk;
 }
