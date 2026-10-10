@@ -35,8 +35,8 @@ export function summary(s){const res=s.score[0]>s.score[1]?0:s.score[1]>s.score[
 export function moveStep(p,u,s,dt,k){let mx=u.mx||0,my=u.my||0,m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}
  const car=s.own>=0?s.ps[s.own]:null;
  if(u.press&&car&&car.t!==s.ps[k].t){const[ex,ey]=norm(car.x-p.x,car.y-p.y);mx=ex*.8+mx*.4;my=ey*.8+my*.4;m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}}
- const run=!!(u.sprint&&p.st>.05&&m>.2),has=s.own===k,sp=(run?250:u.press?215:180)*(has?(run?0.84:0.9):1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?6:10));
- p.vx+=(mx*sp-p.vx)*a;p.vy+=(my*sp-p.vy)*a;if(m>.2){const dx=mx/m,dy=my/m,turn=Math.min(1,dt*(has?(run?4:6):10));[p.fx,p.fy]=norm(p.fx+(dx-p.fx)*turn,p.fy+(dy-p.fy)*turn)}
+ const run=!!(u.sprint&&p.st>.05&&m>.2),has=s.own===k,sp=(run?250:u.press?215:180)*(has?.93:1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?7:10));
+ p.vx+=(mx*sp-p.vx)*a;p.vy+=(my*sp-p.vy)*a;if(m>.2){p.fx=mx/m;p.fy=my/m}
  p.x=clamp(p.x+p.vx*dt,R,W-R);p.y=clamp(p.y+p.vy*dt,R,H-R)}
 export function setPiece(s,type,ko){const q=s.ps[ko],t=q.t,d=t?-1:1,gx=t?0:W,pen=type==='pen',b=s.ball;
  const bx=pen?gx-d*140:clamp(q.x,40,W-40),by=pen?H/2:clamp(q.y,40,H-40);
@@ -55,8 +55,8 @@ export function step(s,inp,dt){
  s.ps.forEach((p,k)=>{if(p.off)return;p.sl=Math.max(0,p.sl-dt);p.cl=Math.max(0,p.cl-dt);p.kk=Math.max(0,p.kk-dt);if(s.freeze>0&&k!==s.taker&&k!==s.gk){p.vx=p.vy=0;return}const u=inp[k];if(u.h)s.st[k].hu+=dt;if(u.call&&s.own>=0&&s.own!==k&&s.ps[s.own].t===p.t)p.cl=1.4,p.ca=u.ai?1:0;p.cd=Math.max(0,p.cd-dt);p.pk=Math.max(0,p.pk-dt);p.stun=Math.max(0,p.stun-dt);
   let mx=u.mx,my=u.my;let m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}if(u.press&&s.own>=0&&s.ps[s.own].t!==p.t){const c=s.ps[s.own],[ex,ey]=norm(c.x-p.x,c.y-p.y);mx=ex*.8+mx*.4;my=ey*.8+my*.4;m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}} // press: auto-close the carrier
   const run=!!(u.sprint&&p.st>.05&&m>.2),has=s.own===k;p.run=run;p.st=clamp(p.st+(run?-.35:.12)*dt,0,1);p.sh=!!u.shield;
-  const sp=(run?250:u.press?215:180)*(has?(run?0.84:0.9):1)*(u.h?1:.94)*(p.t?s.diff:1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?6:10));
-  p.vx+=(mx*sp-p.vx)*a;p.vy+=(my*sp-p.vy)*a;if(m>.2){const dx=mx/m,dy=my/m,turn=Math.min(1,dt*(has?(run?4:6):10));[p.fx,p.fy]=norm(p.fx+(dx-p.fx)*turn,p.fy+(dy-p.fy)*turn)}
+  const sp=(run?250:u.press?215:180)*(has?.93:1)*(u.h?1:.94)*(p.t?s.diff:1)*(p.stun>0?.3:1)*(u.shield?.55:1),a=Math.min(1,dt*(has?7:10));
+  p.vx+=(mx*sp-p.vx)*a;p.vy+=(my*sp-p.vy)*a;if(m>.2){p.fx=mx/m;p.fy=my/m}
   p.x=clamp(p.x+p.vx*dt,R,W-R);p.y=clamp(p.y+p.vy*dt,R,H-R);
   const d=Math.hypot(b.x-p.x,b.y-p.y);
   if(p.stun<=0&&p.cd<=0){
@@ -78,13 +78,8 @@ export function step(s,inp,dt){
   }
  });
  for(let i=0;i<10;i++)for(let j=i+1;j<10;j++){const a=s.ps[i],c=s.ps[j];if(a.off||c.off)continue;let dx=c.x-a.x,dy=c.y-a.y;const d=Math.hypot(dx,dy);if(d>0&&d<2*R){const o=(2*R-d)/2;dx/=d;dy/=d;a.x-=dx*o;a.y-=dy*o;c.x+=dx*o;c.y+=dy*o}}
- // Close control uses a soft lead point and retains ball momentum through turns.
- // Sprinting buys speed but pushes the ball farther ahead, making sharp turns riskier.
- if(s.own>=0){const o=s.ps[s.own];if(o.off||o.stun>0)s.own=-1;else{
-  const lead=o.run?52:32,velocityLead=clamp((o.vx*o.fx+o.vy*o.fy)*.02,0,7),targetX=o.x+o.fx*(lead+velocityLead),targetY=o.y+o.fy*(lead+velocityLead),oldX=b.x,oldY=b.y;
-  const follow=Math.min(1,dt*(s.trap>0?12:o.run?7:9));b.x+=(targetX-b.x)*follow;b.y+=(targetY-b.y)*follow;
-  b.vx=(b.x-oldX)/Math.max(dt,.001);b.vy=(b.y-oldY)/Math.max(dt,.001);b.h=b.vh=0
- }}
+ // Keep possession at the player's feet; sprinting moves the ball slightly farther ahead.
+ if(s.own>=0){const o=s.ps[s.own];if(o.off||o.stun>0)s.own=-1;else{const lead=R+BR+(o.run?9:3),k2=Math.min(1,dt*(s.trap>0?9:16));b.x+=(o.x+o.fx*lead-b.x)*k2;b.y+=(o.y+o.fy*lead-b.y)*k2;b.vx=o.vx;b.vy=o.vy;b.h=b.vh=0}}
  if(s.own<0&&(b.h>0||b.vh>0)){b.vh-=720*dt;b.h+=b.vh*dt;if(b.h<=0){b.h=0;b.vh=b.vh<-140?-b.vh*.3:0}}
  if(s.own<0){const bs=Math.hypot(b.vx,b.vy);let bi=-1,bd=1e9;
   s.ps.forEach((p,k)=>{const rc=k===s.rcv&&s.rcvT>0;if(p.off||(p.pk>0&&!rc)||p.stun>0)return;const d=Math.hypot(b.x-p.x,b.y-p.y),dd=rc?d-20:d;if(b.h<24&&d<R+BR+(rc?24:8)&&dd<bd){bd=dd;bi=k}}); // the intended receiver gets a bigger, stickier first touch
@@ -107,16 +102,16 @@ export const NOACT={mx:0,my:0,sprint:0,press:0,slide:0,call:0,pass:0,lob:0,thru:
 // AI: attackers dribble, dodge, pass to free runners and shoot; defenders press, cover and mark goal-side
 export function ai(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?0:W,ogx=p.t?W:0;
  const mates=s.ps.filter(q=>q.t===p.t&&!q.off),opps=s.ps.filter(q=>q.t!==p.t&&!q.off),car=s.own>=0?s.ps[s.own]:null;
- const dist=(a,x,y)=>Math.hypot(a.x-x,a.y-y),by=(x,y)=>mates.slice().sort((a,c)=>dist(a,x,y)-dist(c,x,y)),style=(p.i+Math.floor(s.time/14))%3;let tx=p.hx,ty=p.hy;
+ const dist=(a,x,y)=>Math.hypot(a.x-x,a.y-y),by=(x,y)=>mates.slice().sort((a,c)=>dist(a,x,y)-dist(c,x,y));let tx=p.hx,ty=p.hy;
  if(s.gk===k&&s.gkT>0){tx=ogx+d*14;ty=clamp(b.y,H/2-GOAL/2+8,H/2+GOAL/2-8);if(dist(p,b.x,b.y)<45){tx=b.x;ty=b.y}}
  else if(car===p){const dg=dist(p,gx,H/2);let o=opps[0];opps.forEach(c=>{if(dist(c,p.x,p.y)<dist(o,p.x,p.y))o=c});const near=o?dist(o,p.x,p.y):1e9;
-  tx=gx;ty=H/2+(p.y<H/2?-30:30);if(near<120){const escape=(p.y>o.y?1:-1)*(style===2?1.25:.85);ty=clamp(p.y+escape*86,55,H-55);tx=p.x+d*(style===0?28:58)}
-  u.sprint=near>80?1:0;if(dg<390&&(near>52||dg<210||style===1&&Math.random()<.07))u.shoot=.58;
+  tx=gx;ty=H/2+(p.y<H/2?-30:30);if(near<90){ty=p.y+(p.y>o.y?90:-90);tx=p.x+d*50}
+  u.sprint=near>80?1:0;if(dg<360&&(near>45||dg<200||Math.random()<.04))u.shoot=.6;
   const free=mates.filter(q=>q!==p&&(q.x-p.x)*d>-20&&dist(q,p.x,p.y)>90&&dist(q,p.x,p.y)<380&&opps.every(c=>dist(c,q.x,q.y)>60)).sort((a,c)=>(c.x-a.x)*d);
-  const cal=mates.filter(q=>q!==p&&q.cl>0&&!q.ca&&dist(q,p.x,p.y)>60).sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y));if(cal.length&&Math.random()<.08){u.pass=1;u.to=cal[0]}else if(free.length&&near<(style===0?115:82)&&Math.random()<(style===0?.085:.045)){u.pass=1;u.to=free[0]}}
- else if(car&&car.t===p.t){const lane=(p.i%2?1:-1)*(p.i===1||p.i===4?1.15:.65);tx=clamp(p.hx+(car.x-W/2)*.55+d*70,60,W-60);ty=clamp(p.hy+(car.y-H/2)*.35+lane*48,40,H-40);u.sprint=dist(p,tx,ty)>110?1:0;if(dist(p,car.x,car.y)<300&&(p.x-car.x)*d>40&&opps.every(o=>dist(o,p.x,p.y)>70)&&Math.random()<.014){u.call=1;u.ai=1}}
+  const cal=mates.filter(q=>q!==p&&q.cl>0&&!q.ca&&dist(q,p.x,p.y)>60).sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y));if(cal.length&&Math.random()<.06){u.pass=1;u.to=cal[0]}else if(free.length&&near<75&&Math.random()<.05){u.pass=1;u.to=free[0]}}
+ else if(car&&car.t===p.t){tx=clamp(p.hx+(car.x-W/2)*.55+d*70,60,W-60);ty=clamp(p.hy+(car.y-H/2)*.35,40,H-40);u.sprint=dist(p,tx,ty)>120?1:0;if(dist(p,car.x,car.y)<300&&(p.x-car.x)*d>40&&opps.every(o=>dist(o,p.x,p.y)>70)&&Math.random()<.01){u.call=1;u.ai=1}}
  else if(car){const rank=by(car.x,car.y).indexOf(p);
-  if(rank===0&&dist(p,car.x,car.y)<350){tx=car.x;ty=car.y;const dc=dist(p,car.x,car.y);u.sprint=dc>75?1:0;if(dc<2*R+16&&Math.random()<.026)u.tackle=1}
+  if(rank===0&&dist(p,car.x,car.y)<320){tx=car.x;ty=car.y;const dc=dist(p,car.x,car.y);u.sprint=dc>90?1:0;if(dc<2*R+12&&Math.random()<.018)u.tackle=1}
   else if(rank===1){tx=car.x+(ogx-car.x)*.3;ty=car.y+(H/2-car.y)*.3}
   else{const ms=opps.filter(o=>o!==car),o=ms[p.i%ms.length]||car;tx=o.x+(ogx-o.x)*.25;ty=o.y+(H/2-o.y)*.1}}
  else{if(by(b.x,b.y)[0]===p||(s.rcv===k&&s.rcvT>0)){tx=b.x+b.vx*.2;ty=b.y+b.vy*.2;u.sprint=dist(p,b.x,b.y)>60?1:0}else{tx=p.hx+(b.x-W/2)*.4;ty=p.hy+(b.y-H/2)*.3}}
