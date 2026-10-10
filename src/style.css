@@ -140,3 +140,11 @@ body.pad #zone,body.pad #btns,body.pad #sw{display:none!important}body.pad #hint
 #tut button{margin-top:6px;border:1px solid #52669e;border-radius:20px;background:#111d40;color:#eef3ff;padding:5px 12px;font:700 11px Arial,sans-serif;cursor:pointer}
 @media(max-width:540px){#menu .help-grid{grid-template-columns:1fr}#menu:before{flex-basis:48px;width:48px;height:48px;margin:4px auto 0}}
 #ping{padding:5px 9px;border:1px solid #c6ff3d66;border-radius:20px;background:#0b1226dd;box-shadow:0 4px 14px #0005;letter-spacing:.4px}
+
+/* Compact match-event callouts in the Street FB neon style */
+#msg .pop{max-width:min(84vw,560px);padding:.28em .55em;border:1px solid #c6ff3d88;border-left:4px solid #c6ff3d;border-radius:10px;background:rgba(11,18,38,.9);box-shadow:0 8px 28px #0008,0 0 18px #c6ff3d22;font-size:clamp(23px,4.6vw,46px);line-height:1.02;text-shadow:0 2px 0 #0b1226,0 0 14px #c6ff3d35}
+#msg>small{max-width:min(82vw,520px);padding:7px 12px;border:1px solid #52669e;border-radius:8px;background:rgba(11,18,38,.88);font-size:clamp(10px,1.7vw,13px);letter-spacing:1.4px;line-height:1.35}
+#msg.k-goal .pop{border-color:#c6ff3d}
+#msg.k-foul .pop{border-color:#ff2e88;border-left-color:#ff2e88}
+#msg.k-pen .pop{border-color:#ffb020;border-left-color:#ffb020}
+@keyframes goal-pop{0%{transform:scale(.86);opacity:0}55%{transform:scale(1.04);opacity:1}100%{transform:scale(1);opacity:1}}

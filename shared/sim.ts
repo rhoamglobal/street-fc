@@ -30,7 +30,7 @@ export function summary(s){const res=s.score[0]>s.score[1]?0:s.score[1]>s.score[
  let mv=rows[0];rows.forEach(r=>{if(r.r>mv.r||(r.r===mv.r&&r.g>mv.g))mv=r});
  const team=t=>{const q=rows.filter(r=>r.t===t),f=n=>q.reduce((a,r)=>a+r[n],0),pa=f('pa');return{poss:Math.round(s.poss[t]/tot*100),sh:f('sh'),pacc:pa?Math.round(f('pc')/pa*100):0,fl:f('fl')}};
  return{score:s.score,names:s.names,ev:s.ev,rows,motm:mv.k,team:[team(0),team(1)]}}
-// Set pieces: free kick at the foul spot, or a penalty (defender nearest goal stands in as keeper). Everyone else is pushed back and frozen briefly.
+// Set pieces: free kick at the foul spot, or a penalty (defender nearest goal stands in as keeper). The whistle pause handles the brief stoppage.
 // Local-player movement for client-side prediction: same maths as the movement part of step()
 export function moveStep(p,u,s,dt,k){let mx=u.mx||0,my=u.my||0,m=Math.hypot(mx,my);if(m>1){mx/=m;my/=m}
  const car=s.own>=0?s.ps[s.own]:null;
@@ -43,7 +43,7 @@ export function setPiece(s,type,ko){const q=s.ps[ko],t=q.t,d=t?-1:1,gx=t?0:W,pen
  Object.assign(b,{x:bx,y:by,vx:0,vy:0,h:0,vh:0});q.x=clamp(bx-d*26,R,W-R);q.y=by;q.vx=q.vy=0;q.fx=d;q.fy=0;s.pend=-1;s.own=ko;s.taker=ko;s.gk=-1;
  if(pen){let bi=-1,bd=1e9;s.ps.forEach((p,k)=>{if(p.t!==t&&!p.off){const dd=Math.abs(p.x-gx);if(dd<bd){bd=dd;bi=k}}});s.gk=bi;if(bi>=0){const g=s.ps[bi];g.x=gx-d*14;g.y=H/2;g.vx=g.vy=0}s.gkT=4}
  s.ps.forEach((p,k)=>{if(k===ko||k===s.gk||p.off)return;const dx=p.x-bx,dy=p.y-by,m=Math.hypot(dx,dy)||1,mn=pen?220:130;if(m<mn){p.x=clamp(bx+dx/m*mn,R,W-R);p.y=clamp(by+dy/m*mn,R,H-R)}});
- s.pause=2.2;s.freeze=1.6;s.fcd=8}
+ s.pause=2.2;s.freeze=0;s.fcd=8}
 export function callFoul(s,fk,fouled){s.st[fk].fl++;const o=s.ps[fouled],gx=o.t?0:W,box=Math.abs(o.x-gx)<170&&Math.abs(o.y-H/2)<150;
  s.kind=box?'pen':'foul';s.msg=pick(box?PENS:FOULS);s.sub=(box?'PENALTY - ':'FREE KICK - ')+s.names[o.t];setPiece(s,box?'pen':'fk',fouled)}
 export function step(s,inp,dt){
