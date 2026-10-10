@@ -311,7 +311,7 @@ function loop(n){const dt=Math.min(.1,(n-last)/1000);last=n;padPoll(n);pingHud(n
  if(!loaded){loaded=true;$('lp').textContent='Setting up the street... 99%';$('lb').style.width='99%';setTimeout(()=>{$('load').style.opacity=0;setTimeout(()=>$('load').remove(),450)},700)}
  requestAnimationFrame(loop)}
 // ===== ONLINE: the server runs the sim; we send inputs and render its snapshots =====
-function wire(room:any){online=room;connectionNotice='';shown='';resetNet();const pi=setInterval(()=>{if(online===room)room.send('p',{t:performance.now()});else clearInterval(pi)},1500);room.send('p',{t:performance.now()});
+function wire(room:any){online=room;connectionNotice='';shown='';resetNet();const pi=setInterval(()=>{if(online===room)room.send('p',{t:performance.now(),r:net.rtt});else clearInterval(pi)},1500);room.send('p',{t:performance.now(),r:net.rtt});
  room.onMessage('you',(m:any)=>{me=m.idx});room.onMessage('s',(m:any)=>applySnap(s,m,me));room.onMessage('q',(m:any)=>{const r=performance.now()-m.t;net.rtt=net.rtt?net.rtt*.7+r*.3:r});room.onMessage('c',(a:number[])=>{s.calls=new Set(a)});room.onMessage('sum',(d:any)=>{sumData=d;if(s.over)showSummary()});
  room.onMessage('cfg',(c:any)=>{lob=c;if(c.phase==='play'){look(c.field,c.teams);$('menu').className='hide';inMenu=false}else{inMenu=true;show('lobby')}});
  room.onLeave(async(code:number)=>{if(online!==room)return;if(code===1000||code===4000){online=null;lob=null;show('modes');return}

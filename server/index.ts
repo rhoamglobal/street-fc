@@ -19,7 +19,10 @@ const later = (f: () => void) => (LAG ? setTimeout(f, LAG) : f());
 const QUICK_WAIT = 12000, LEN = Number(process.env.LEN) || 150;
 const activeRooms = new Set<any>();
 const bootedAt = Date.now();
-let joinsSinceBoot = 0, matchesSinceBoot = 0;
+let joinsSinceBoot = 0, matchesSinceBoot = 0, completedMatchesSinceBoot = 0, disconnectsSinceBoot = 0;
+let peakPlayersSinceBoot = 0, simulationSamples = 0, simulationTotalMs = 0, simulationMaxMs = 0;
+const clientRtts = new Map<string, number>();
+let cpuPrevious = process.cpuUsage(), cpuPreviousAt = Date.now(), cpuPercent = 0;
 class MatchRoom extends Room {
   maxClients = 10;
   s: any; afk = new Set<number>(); disconnected = new Set<string>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
@@ -69,7 +72,11 @@ class MatchRoom extends Room {
       if (m.shoot) this.latch[k].shoot = Math.max(0.4, Math.min(1, Number(m.shoot) || 0.4));
       });
     });
-    this.onMessage('p', (c, m) => later(() => later(() => c.send('q', { t: m?.t })))); // ping -> pong, for the ping display and prediction
+    this.onMessage('p', (c, m) => {
+      const rtt = Number(m?.r);
+      if (Number.isFinite(rtt) && rtt >= 0 && rtt < 10000) clientRtts.set(c.sessionId, rtt);
+      later(() => later(() => c.send('q', { t: m?.t })));
+    }); // ping -> pong, for the ping display and prediction
     this.onMessage('afk', (c, m) => { const k = me(c); if (k === undefined) return; if (m?.on) this.afk.add(k); else this.afk.delete(k); }); // menu open: a bot plays for you
     // ---- private lobby controls
     this.onMessage('rdy', (c) => { if (this.cfg.phase !== 'lobby') return; this.rdy.has(c.sessionId) ? this.rdy.delete(c.sessionId) : this.rdy.add(c.sessionId); this.pub(); });
@@ -115,9 +122,10 @@ class MatchRoom extends Room {
     }, 1000 / 60);
   }
   tick() {
+    const simStartedAt = performance.now();
     const s = this.s, c = this.cfg, hum = new Set([...this.slots.values()].filter(k => !this.afk.has(k)));
     if (s.over) {
-      if (!this.overAt) { this.overAt = Date.now(); this.broadcast('sum', summary(s)); } // full-time report, then back to the lobby after 20s
+      if (!this.overAt) { this.overAt = Date.now(); completedMatchesSinceBoot++; this.broadcast('sum', summary(s)); } // full-time report, then back to the lobby after 20s
       else if (Date.now() - this.overAt > 20000) {
         this.overAt = 0;
         if (c.kind === 'quick') { this.s = mk({ len: LEN, names: this.names() }); matchesSinceBoot++; }
@@ -128,6 +136,8 @@ class MatchRoom extends Room {
     const inp = s.ps.map((p: any, k: number) => hum.has(k) ? { ...NOACT, ...this.held[k], ...this.latch[k], h: 1 } : ai(s, k)); // empty slots = AI
     step(s, inp, 1 / 60);
     for (const k of hum) this.latch[k] = {};
+    const elapsed = performance.now() - simStartedAt;
+    simulationSamples++; simulationTotalMs += elapsed; simulationMaxMs = Math.max(simulationMaxMs, elapsed);
   }
   onJoin(c: Client, o: any) {
     joinsSinceBoot++;
@@ -137,9 +147,12 @@ class MatchRoom extends Room {
     while (this.nicks.includes(nm)) nm = base.slice(0, 12) + ' ' + n++; // two players can't share a name in one match
     this.nicks[k] = nm;
     this.reconf();
+    peakPlayersSinceBoot = Math.max(peakPlayersSinceBoot, [...activeRooms].reduce((sum: number, room: any) => sum + room.clients.length, 0));
   }
   onDispose() { activeRooms.delete(this); }
   async onLeave(c: Client, consented: boolean) { // hold a dropped player's seat for up to 60 seconds
+    if (!consented) disconnectsSinceBoot++;
+    clientRtts.delete(c.sessionId);
     const k = this.slots.get(c.sessionId);
     if (!consented && k !== undefined) {
       this.disconnected.add(c.sessionId);
@@ -167,6 +180,10 @@ class MatchRoom extends Room {
   }
 }
 function adminStats() {
+  const now = Date.now(), cpuNow = process.cpuUsage(), elapsedMs = Math.max(1, now - cpuPreviousAt);
+  const cpuUsedMs = (cpuNow.user - cpuPrevious.user + cpuNow.system - cpuPrevious.system) / 1000;
+  cpuPercent = Math.max(0, Math.min(100, cpuUsedMs / elapsedMs * 100));
+  cpuPrevious = cpuNow; cpuPreviousAt = now;
   const rooms = [...activeRooms].map((room: any) => ({
     roomId: room.roomId,
     type: room.cfg.kind === 'quick' ? 'Quick match' : 'Private room',
@@ -176,6 +193,8 @@ function adminStats() {
     field: room.cfg.field,
     mode: room.cfg.mode,
   }));
+  const rtts = [...clientRtts.values()].sort((a, b) => a - b);
+  const memory = process.memoryUsage();
   return {
     capturedAt: new Date().toISOString(),
     uptimeSeconds: Math.floor((Date.now() - bootedAt) / 1000),
@@ -186,6 +205,22 @@ function adminStats() {
     waitingRooms: rooms.filter(room => room.phase !== 'play').length,
     joinsSinceBoot,
     matchesStartedSinceBoot: matchesSinceBoot,
+    completedMatchesSinceBoot,
+    disconnectsSinceBoot,
+    peakPlayersSinceBoot,
+    serverHealth: {
+      cpuPercent: Math.round(cpuPercent * 10) / 10,
+      memoryRssMb: Math.round(memory.rss / 1048576),
+      heapUsedMb: Math.round(memory.heapUsed / 1048576),
+    },
+    performance: {
+      averageSimulationTickMs: simulationSamples ? Math.round(simulationTotalMs / simulationSamples * 1000) / 1000 : 0,
+      maxSimulationTickMs: Math.round(simulationMaxMs * 1000) / 1000,
+      simulationSamples,
+      averageClientRttMs: rtts.length ? Math.round(rtts.reduce((sum, value) => sum + value, 0) / rtts.length) : 0,
+      maxClientRttMs: rtts.length ? Math.round(rtts[rtts.length - 1]) : 0,
+      clientsReportingRtt: rtts.length,
+    },
     rooms,
   };
 }

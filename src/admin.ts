@@ -4,7 +4,11 @@ type RoomStat = { roomId: string; type: string; phase: string; players: number; 
 type Stats = {
   capturedAt: string; uptimeSeconds: number; onlinePlayers: number; activeRooms: number;
   matchesInProgress: number; playersInMatches: number; waitingRooms: number;
-  joinsSinceBoot: number; matchesStartedSinceBoot: number; rooms: RoomStat[];
+  joinsSinceBoot: number; matchesStartedSinceBoot: number; completedMatchesSinceBoot: number;
+  disconnectsSinceBoot: number; peakPlayersSinceBoot: number;
+  serverHealth: { cpuPercent: number; memoryRssMb: number; heapUsedMb: number };
+  performance: { averageSimulationTickMs: number; maxSimulationTickMs: number; simulationSamples: number; averageClientRttMs: number; maxClientRttMs: number; clientsReportingRtt: number };
+  rooms: RoomStat[];
 };
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -48,6 +52,15 @@ function render(data: Stats) {
   $('uptime').textContent = duration(data.uptimeSeconds);
   $('joins').textContent = `${data.joinsSinceBoot} joins`;
   $('matches-started').textContent = `${data.matchesStartedSinceBoot} matches started`;
+  $('peak-players').textContent = String(data.peakPlayersSinceBoot);
+  $('completed-matches').textContent = `${data.completedMatchesSinceBoot} completed matches`;
+  $('disconnects').textContent = `${data.disconnectsSinceBoot} disconnects`;
+  $('cpu').textContent = `${data.serverHealth.cpuPercent}%`;
+  $('memory').textContent = `${data.serverHealth.memoryRssMb} MB RSS · ${data.serverHealth.heapUsedMb} MB heap`;
+  $('simulation').textContent = `${data.performance.averageSimulationTickMs} ms`;
+  $('simulation-max').textContent = `${data.performance.maxSimulationTickMs} ms max · ${data.performance.simulationSamples.toLocaleString()} ticks`;
+  $('network').textContent = `${data.performance.averageClientRttMs} ms`;
+  $('network-max').textContent = `${data.performance.maxClientRttMs} ms max · ${data.performance.clientsReportingRtt} clients`;
   $('updated-at').textContent = `Updated ${new Date(data.capturedAt).toLocaleTimeString()}`;
 
   const body = $('rooms');
