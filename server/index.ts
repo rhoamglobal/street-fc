@@ -25,7 +25,7 @@ const clientRtts = new Map<string, number>();
 let cpuPrevious = process.cpuUsage(), cpuPreviousAt = Date.now(), cpuPercent = 0;
 class MatchRoom extends Room {
   maxClients = 10;
-  s: any; afk = new Set<number>(); disconnected = new Set<string>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
+  s: any; afk = new Set<number>(); menu = new Set<number>(); disconnected = new Set<string>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
   held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; nk = 0; nsig = ''; code = 'QUICK'; waitUntil = 0; lastPub = 0;
   cfg: any = { kind: 'private', phase: 'lobby', mode: 'versus', field: 'street', teams: [0, 2], caps: [-1, -1], chooser: -1, caller: -1, toss: null, host: -1, eta: 0 };
   names() { return this.cfg.teams.map((i: number) => TEAMS[i].sh); }
@@ -77,7 +77,8 @@ class MatchRoom extends Room {
       if (Number.isFinite(rtt) && rtt >= 0 && rtt < 10000) clientRtts.set(c.sessionId, rtt);
       later(() => later(() => c.send('q', { t: m?.t })));
     }); // ping -> pong, for the ping display and prediction
-    this.onMessage('afk', (c, m) => { const k = me(c); if (k === undefined) return; if (m?.on) this.afk.add(k); else this.afk.delete(k); }); // menu open: a bot plays for you
+    this.onMessage('afk', (c, m) => { const k = me(c); if (k === undefined) return; if (m?.on) this.afk.add(k); else this.afk.delete(k); }); // disconnected players are covered by bots
+    this.onMessage('menu', (c, m) => { const k = me(c); if (k === undefined) return; if (m?.on) this.menu.add(k); else this.menu.delete(k); this.held[k] = {}; this.latch[k] = {}; });
     // ---- private lobby controls
     this.onMessage('rdy', (c) => { if (this.cfg.phase !== 'lobby') return; this.rdy.has(c.sessionId) ? this.rdy.delete(c.sessionId) : this.rdy.add(c.sessionId); this.pub(); });
     this.onMessage('mode', (c, m) => { if (this.cfg.phase !== 'lobby' || c.sessionId !== this.order[0] || !['coop', 'versus'].includes(m?.m)) return; this.cfg.mode = m.m; this.regroup(); this.reconf(); });
@@ -133,7 +134,7 @@ class MatchRoom extends Room {
       }
       return;
     }
-    const inp = s.ps.map((p: any, k: number) => hum.has(k) ? { ...NOACT, ...this.held[k], ...this.latch[k], h: 1 } : ai(s, k)); // empty slots = AI
+    const inp = s.ps.map((p: any, k: number) => this.menu.has(k) ? NOACT : hum.has(k) ? { ...NOACT, ...this.held[k], ...this.latch[k], h: 1 } : ai(s, k)); // menuing players stay still; empty slots use AI
     step(s, inp, 1 / 60);
     for (const k of hum) this.latch[k] = {};
     const elapsed = performance.now() - simStartedAt;
@@ -154,6 +155,7 @@ class MatchRoom extends Room {
     if (!consented) disconnectsSinceBoot++;
     clientRtts.delete(c.sessionId);
     const k = this.slots.get(c.sessionId);
+    if (k !== undefined) this.menu.delete(k);
     if (!consented && k !== undefined) {
       this.disconnected.add(c.sessionId);
       if (this.cfg.phase === 'play') this.afk.add(k);

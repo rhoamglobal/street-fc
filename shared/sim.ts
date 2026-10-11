@@ -14,12 +14,12 @@ export function skpos(s){s.ps.forEach((p,k)=>{p.off=!(k===s.me||k===5);p.vx=p.vy
 export function rnd(s,msg,kind){s.round++;if(s.round>5){s.over=true;return}s.time=8;skpos(s);s.msg=msg;s.kind=kind||'info';s.pause=1.6}
 export function reset(s){s.own=-1;s.last=s.prev=s.pend=s.po=-1;s.freeze=0;s.gkT=0;s.ps.forEach(p=>{p.x=p.hx;p.y=p.hy;p.vx=p.vy=0;p.stun=0;p.cd=0});Object.assign(s.ball,{x:W/2,y:H/2,vx:0,vy:0,h:0,vh:0})}
 export function goal(s,t){s.gt=t;
- if(s.mode==='shootout'){if(!t)s.score[0]++;return rnd(s,pick(t?MISS:GOALS),t?'info':'goal')}
+ if(s.mode==='shootout'){if(!t)s.score[0]++;return rnd(s,t?pick(MISS):'GOALLLLLL!',t?'info':'goal')}
  const k=s.last,og=k>=0&&s.ps[k].t!==t,as=!og&&k>=0&&s.prev>=0&&s.prev!==k&&s.ps[s.prev].t===t?s.prev:-1;
  const el=s.half===1?s.len-s.time:s.len+(s.len-s.time),mn=Math.max(1,Math.min(90,Math.round(el/(2*s.len)*90)));
  if(k>=0){if(og)s.st[k].og++;else{s.st[k].g++;if(as>=0)s.st[as].a++}}
  s.ev.push({t,k,as,og:og?1:0,mn});s.sc=k;s.as=as;s.og=og?1:0;s.mn=mn;
- s.score[t]++;s.msg=pick(GOALS);s.kind='goal';s.sub=s.names[t];reset(s);s.pause=s.mode==='match'?5:2.4;if(s.golden)s.over=true}
+ s.score[t]++;s.msg='GOALLLLLL!';s.kind='goal';s.sub='';reset(s);s.pause=s.mode==='match'?5:2.4;if(s.golden)s.over=true}
 export function shootDir(p,assist){if(!assist)return[p.fx,p.fy];const[tx,ty]=norm((p.t?0:W)-p.x,H/2-p.y);return norm(p.fx+tx*.6,p.fy+ty*.6)} // only bots get aim assist on shots
 export function pickMate(p,s){let best=null,bs=.35;s.ps.forEach(q=>{if(q.t!==p.t||q===p||q.off)return;const d=Math.hypot(q.x-p.x,q.y-p.y),[nx,ny]=norm(q.x-p.x,q.y-p.y),marked=s.ps.some(o=>o.t!==p.t&&!o.off&&Math.hypot(o.x-q.x,o.y-q.y)<50),sc=nx*p.fx+ny*p.fy-d/2500-(marked?.25:0);if(sc>bs){bs=sc;best=q}});return best} // assisted pass: best open mate in the direction you push
 export function touch(s,k){if(s.last!==k){s.prev=s.last;s.last=k}}
@@ -43,7 +43,7 @@ export function setPiece(s,type,ko){const q=s.ps[ko],t=q.t,d=t?-1:1,gx=t?0:W,pen
  Object.assign(b,{x:bx,y:by,vx:0,vy:0,h:0,vh:0});q.x=clamp(bx-d*26,R,W-R);q.y=by;q.vx=q.vy=0;q.fx=d;q.fy=0;s.pend=-1;s.own=ko;s.taker=ko;s.gk=-1;
  if(pen){let bi=-1,bd=1e9;s.ps.forEach((p,k)=>{if(p.t!==t&&!p.off){const dd=Math.abs(p.x-gx);if(dd<bd){bd=dd;bi=k}}});s.gk=bi;if(bi>=0){const g=s.ps[bi];g.x=gx-d*14;g.y=H/2;g.vx=g.vy=0}s.gkT=4}
  s.ps.forEach((p,k)=>{if(k===ko||k===s.gk||p.off)return;const dx=p.x-bx,dy=p.y-by,m=Math.hypot(dx,dy)||1,mn=pen?220:130;if(m<mn){p.x=clamp(bx+dx/m*mn,R,W-R);p.y=clamp(by+dy/m*mn,R,H-R)}});
- s.pause=2.2;s.freeze=0;s.fcd=8}
+ s.pause=2.6;s.freeze=0;s.fcd=8}
 export function callFoul(s,fk,fouled){s.st[fk].fl++;const o=s.ps[fouled],gx=o.t?0:W,box=Math.abs(o.x-gx)<170&&Math.abs(o.y-H/2)<150;
  s.kind=box?'pen':'foul';s.msg=pick(box?PENS:FOULS);s.sub=(box?'PENALTY - ':'FREE KICK - ')+s.names[o.t];setPiece(s,box?'pen':'fk',fouled)}
 export function step(s,inp,dt){
@@ -76,6 +76,9 @@ export function step(s,inp,dt){
 
   }
  });
+ // A foul can be called from inside the player loop. Stop this simulation
+ // tick immediately so the set piece and whistle pause remain intact.
+ if(s.pause>0)return;
  for(let i=0;i<10;i++)for(let j=i+1;j<10;j++){const a=s.ps[i],c=s.ps[j];if(a.off||c.off)continue;let dx=c.x-a.x,dy=c.y-a.y;const d=Math.hypot(dx,dy);if(d>0&&d<2*R){const o=(2*R-d)/2;dx/=d;dy/=d;a.x-=dx*o;a.y-=dy*o;c.x+=dx*o;c.y+=dy*o}}
  // Keep possession at the player's feet; sprinting moves the ball slightly farther ahead.
  if(s.own>=0){const o=s.ps[s.own];if(o.off||o.stun>0)s.own=-1;else{const quality=o.firstTouchT>0?o.firstTouch:1,lead=R+BR+(o.run?9:3)+(1-quality)*24,k2=Math.min(1,dt*(s.trap>0?9:16)*(.72+.28*quality));b.x+=(o.x+o.fx*lead-b.x)*k2;b.y+=(o.y+o.fy*lead-b.y)*k2;b.vx=o.vx;b.vy=o.vy;b.h=b.vh=0}}
