@@ -674,3 +674,74 @@ body.touch-left #btns{left:10px;right:auto}
 @media(max-width:620px){.friendly-room-status{align-items:flex-start;flex-direction:column;gap:4px}.private-team-grid{grid-template-columns:1fr;gap:5px;margin:12px auto}.private-team-grid .friendly-room-versus{height:26px}.private-team-card{padding:13px}.private-pitch-feature{grid-template-columns:1fr;gap:10px;padding:12px}.private-pitch-feature .pitch-display{width:100%;height:130px}.private-pitch-layout .pitch-options{grid-template-columns:repeat(3,minmax(0,1fr))}.private-pitch-layout .pitch-option{flex-direction:column;align-items:stretch;padding:4px}.private-pitch-layout .pitch-option .pitch-mini{width:100%;height:48px;flex:0 0 48px}.private-pitch-layout .pitch-option>i{font-size:7px}.private-setup-actions{margin-top:12px}.private-setup-actions .friendly-start{width:100%}}
 .friendly-room-content{max-width:1120px}.friendly-room-sides{min-height:270px}.friendly-room-code{width:min(780px,100%);margin:10px auto 0}.friendly-side-card{min-height:250px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.friendly-side-players{justify-content:center}.friendly-room-versus{font-size:clamp(24px,4vw,42px)}
 @media(max-width:620px){.friendly-room-sides{min-height:0}.friendly-side-card{min-height:150px}}
+/* Phone menus stay inside the visible viewport; only long choice lists scroll internally. */
+@media(max-width:680px) and (pointer:coarse){
+ #menu:not(.hide){height:100vh;height:100dvh;max-height:100dvh;overflow:hidden;overscroll-behavior:none;padding-bottom:env(safe-area-inset-bottom)}
+ #menu.home-menu{padding-top:0!important;overflow:hidden}
+ #menu.home-menu .home-content{min-height:0;flex:1}
+ #menu.home-menu .home-grid{min-height:0!important;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr)!important;flex:1}
+ #menu.home-menu .home-options{grid-template-rows:repeat(4,minmax(0,1fr))!important;min-height:0}
+ #menu.home-menu .home-primary{min-height:0!important}
+ #menu.home-menu .home-tile{min-height:0}
+ #menu.matchtype-menu .type-content,#menu.online-menu .online-content,#menu.quick-pick-menu .quick-pick-content,#menu.quick-search-menu .quick-search-content{min-height:0;overflow:hidden}
+ #menu.matchtype-menu .type-grid{grid-template-rows:1.15fr 1fr 1fr!important;min-height:0!important}
+ #menu.matchtype-menu .type-card{min-height:0!important;padding:9px 11px!important}
+ #menu.matchtype-menu .type-copy{padding-top:6px!important}
+ #menu.matchtype-menu .type-copy i{margin-top:5px!important}
+ #menu.matchtype-menu .type-heading{margin:0 0 7px!important}
+ #menu.matchtype-menu .type-heading h1{font-size:28px!important}
+ #menu.matchtype-menu .type-heading p{font-size:9px!important}
+ #menu.matchtype-menu .type-content{padding:8px 0 5px!important}
+ #menu.online-menu .online-grid{grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;min-height:0!important}
+ #menu.online-menu .online-heading{margin:0 0 7px!important}
+ #menu.online-menu .online-content{padding:8px 0 5px!important}
+ #menu.quick-pick-menu .quick-pick-panel{min-height:0;padding:8px!important}
+ #menu.quick-pick-menu .quick-club-grid{min-height:0!important;overflow-y:auto;overscroll-behavior:contain;align-content:start;grid-auto-rows:minmax(64px,auto);flex:1}
+ #menu.quick-pick-menu .quick-club{min-height:0!important}
+ #menu.quick-pick-menu .quick-pick-content,#menu.quick-search-menu .quick-search-content{padding:8px 0 5px!important}
+ #menu.quick-search-menu .search-state-card{min-height:0!important}
+ #menu.match-setup-menu .setup-content{min-height:0;overflow:hidden;padding-top:8px!important;padding-bottom:6px!important}
+ #menu.match-setup-menu .rules-layout{grid-template-rows:minmax(0,1fr) auto!important}
+ #menu.match-setup-menu .rules-panel{min-height:0}
+ #menu.match-setup-menu .rules-pitch{min-height:0!important}
+ #menu.match-setup-menu .sides-layout,#menu.match-setup-menu .team-select-layout{min-height:0!important}
+ #menu.match-setup-menu .side-card,#menu.match-setup-menu .team-select-card{min-height:0!important;padding:8px 5px!important}
+ #menu.match-setup-menu .team-select-card>small{margin-bottom:7px!important}
+ #menu.brand-panel-menu{overflow:hidden;padding-top:max(8px,env(safe-area-inset-top));padding-bottom:max(8px,env(safe-area-inset-bottom));gap:8px}
+ #menu.brand-panel-menu .cup-page,#menu.brand-panel-menu .training-page{min-height:0;max-height:100%;overflow:hidden}
+ #menu.brand-panel-menu .settings-panel,#menu.brand-panel-menu .help-grid{min-height:0;max-height:calc(100dvh - 150px);overflow-y:auto;overscroll-behavior:contain}
+ #menu.friendly-room-menu{height:100vh;height:100dvh;overflow:hidden;padding-top:max(8px,env(safe-area-inset-top));padding-bottom:max(8px,env(safe-area-inset-bottom))}
+ #menu.friendly-room-menu .friendly-room-content{max-height:calc(100dvh - 68px);overflow:hidden;margin-top:8px;margin-bottom:0}
+ #menu.friendly-room-menu .friendly-room-mode{margin:7px 0}
+ #menu.friendly-room-menu .friendly-room-status{margin:7px 0;padding:8px 10px}
+ #menu.friendly-room-menu .friendly-room-sides{grid-template-columns:minmax(0,1fr) 26px minmax(0,1fr);gap:4px;min-height:0}
+ #menu.friendly-room-menu .friendly-side-card{min-height:128px;padding:7px 4px}
+ #menu.friendly-room-menu .friendly-side-club{flex-direction:column;gap:5px;margin:8px 0}
+ #menu.friendly-room-menu .friendly-side-club>b{width:34px;height:34px;font-size:9px}
+ #menu.friendly-room-menu .friendly-side-club>span{font-size:12px}
+ #menu.friendly-room-menu .friendly-room-code{margin-top:7px;padding:8px}
+ #menu.friendly-room-menu .friendly-room-code>b{font-size:24px}
+ #menu.friendly-room-menu .friendly-room-code>div{flex-direction:row}
+ #menu.friendly-room-menu .friendly-room-code button{min-height:34px;font-size:8px}
+ #menu.friendly-room-menu .friendly-room-code>span{display:none}
+ #menu.friendly-room-menu .friendly-room-footer{gap:4px;margin-top:9px}
+ #menu.friendly-room-menu .friendly-start{min-height:42px;font-size:12px}
+}
+@media(max-height:700px) and (max-width:680px) and (pointer:coarse){
+ #menu.home-menu .home-top{height:50px!important;flex-basis:50px!important}
+ #menu.home-menu .home-content h1{font-size:27px!important;margin-bottom:5px!important}
+ #menu.home-menu .home-bottom{min-height:42px!important;padding-top:4px!important}
+ #menu.matchtype-menu .type-top,#menu.online-menu .online-top,#menu.quick-pick-menu .quick-pick-top,#menu.quick-search-menu .quick-search-top,#menu.match-setup-menu .setup-top{flex-basis:48px!important}
+ #menu.matchtype-menu .type-footer,#menu.online-menu .online-footer,#menu.quick-pick-menu .quick-pick-footer,#menu.quick-search-menu .quick-search-footer{flex-basis:26px!important}
+ #menu.match-setup-menu .setup-title{margin-bottom:5px!important}
+ #menu.match-setup-menu .setup-title h1{font-size:26px!important}
+ #menu.match-setup-menu .setup-title p{font-size:9px!important}
+ #menu.match-setup-menu .rules-layout{grid-template-rows:minmax(0,1fr) 95px!important}
+ #menu.match-setup-menu .side-card{padding:5px!important}
+ #menu.match-setup-menu .side-crest,#menu.match-setup-menu .cpu-emblem{width:48px!important;height:48px!important}
+ #menu.match-setup-menu .side-crest .jy{width:38px!important;height:38px!important}
+ #menu.brand-panel-menu .cup-hero,#menu.brand-panel-menu .training-hero{padding:8px}
+ #menu.brand-panel-menu .training-art{height:48px}
+ #menu.brand-panel-menu .cup-round{min-height:54px}
+ #menu.friendly-room-menu .friendly-side-card{min-height:110px}
+}
