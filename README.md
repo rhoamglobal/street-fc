@@ -1,4 +1,10 @@
 # Street FB
+Own the pitch. Rule the streets.
+
+## Brand
+Colours: Asphalt Black #101010 (background), Concrete Charcoal #1C1C1C (panels), Electric Orange #FF5A1F (primary accent), Street Gold #FFCA58 (trophies/secondary), Concrete Grey #A3A3A3 (secondary text), Turf Green #36D17C (success), White #FFFFFF.
+Type: Barlow Condensed (headings, labels, scoreboard) + Barlow (body), bundled via @fontsource.
+Assets in public/: logo-streetfb.png (brush wordmark), crown.png (small lockups), favicon-orange.png, icon-192/512(-orange).png (maskable-safe), apple-touch-icon.png, icon.svg.
 npm install
 npm run dev          # client on :5173, game server on :2567
 
