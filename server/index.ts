@@ -26,8 +26,8 @@ let cpuPrevious = process.cpuUsage(), cpuPreviousAt = Date.now(), cpuPercent = 0
 class MatchRoom extends Room {
   maxClients = 10;
   s: any; afk = new Set<number>(); menu = new Set<number>(); disconnected = new Set<string>(); slots = new Map<string, number>(); order: string[] = []; ready = new Set<string>(); rdy = new Set<string>();
-  held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; nk = 0; nsig = ''; code = 'QUICK'; waitUntil = 0; lastPub = 0;
-  cfg: any = { kind: 'private', phase: 'lobby', mode: 'versus', field: 'street', teams: [0, 2], caps: [-1, -1], chooser: -1, caller: -1, toss: null, host: -1, eta: 0 };
+  held: any[] = []; latch: any[] = []; nicks: string[] = Array(10).fill(''); overAt = 0; nk = 0; nsig = ''; code = 'QUICK'; waitUntil = 0; lastPub = 0; quickTeamChosen=[false,false];
+  cfg: any = { kind: 'private', phase: 'lobby', setupStep: 'teams', mode: 'versus', field: 'street', teams: [0, 2], caps: [-1, -1], chooser: -1, caller: -1, toss: null, host: -1, eta: 0 };
   names() { return this.cfg.teams.map((i: number) => TEAMS[i].sh); }
   free(t: number) { const taken = new Set(this.slots.values()); return [4, 3, 2, 1, 0].find(i => !taken.has(t * 5 + i)); }
   assign(id: string) {
@@ -47,15 +47,15 @@ class MatchRoom extends Room {
   reconf() {
     const c = this.cfg, a = this.captain(0), b = this.captain(1); c.caps = [a, b];
     if (c.phase === 'toss' || c.phase === 'setup') {
-      if (a >= 0 && b >= 0) { if (!c.toss) { c.phase = 'toss'; c.caller = a; } else { c.phase = 'setup'; c.chooser = c.toss.winner === 0 ? a : b; } }
-      else { c.phase = 'setup'; c.toss = null; c.caller = -1; c.chooser = Math.max(a, b); }
+      if (a >= 0 && b >= 0) { if (!c.toss) { c.phase = 'toss'; c.caller = a; } else { c.phase = 'setup'; c.setupStep ||= 'teams'; c.chooser = c.toss.winner === 0 ? a : b; } }
+      else { c.phase = 'setup'; c.setupStep ||= 'teams'; c.toss = null; c.caller = -1; c.chooser = Math.max(a, b); }
     }
     this.pub();
   }
   regroup() { const ids = [...this.order]; const old = [...this.nicks]; const o = new Map(this.slots); this.slots.clear(); this.nicks = Array(10).fill('');
     for (const id of ids) { const k = this.assign(id); this.nicks[k] = old[o.get(id)!]; this.clients.find(c => c.sessionId === id)?.send('you', { idx: k }); } }
   startMatch() { this.s = mk({ len: LEN, names: this.names() }); this.cfg.phase = 'play'; this.overAt = 0; for (const id of this.disconnected) { const k = this.slots.get(id); if (k !== undefined) this.afk.add(k); } matchesSinceBoot++; }
-  startQuick() { const c = this.cfg, r = () => Math.random() * TEAMS.length | 0; c.field = FIELDS[Math.random() * FIELDS.length | 0].id; const a = r(); let b = r(); if (b === a) b = (a + 1) % TEAMS.length; c.teams = [a, b]; this.startMatch(); this.pub(); }
+  startQuick() { const c = this.cfg, r = () => Math.random() * TEAMS.length | 0; c.field = FIELDS[Math.random() * FIELDS.length | 0].id; const a = this.quickTeamChosen[0] ? c.teams[0] : r(); let b = this.quickTeamChosen[1] ? c.teams[1] : r(); if (b === a) b = (a + 1) % TEAMS.length; c.teams = [a, b]; this.startMatch(); this.pub(); }
   onCreate(o: any) {
     activeRooms.add(this);
     this.code = String(o.code || 'QUICK'); this.cfg.kind = o.kind === 'quick' ? 'quick' : 'private'; this.cfg.phase = this.cfg.kind === 'quick' ? 'wait' : 'lobby';
@@ -96,17 +96,19 @@ class MatchRoom extends Room {
       g.toss = { call: m.c, result, winner: m.c === result ? side : 1 - side }; this.reconf();
     });
     this.onMessage('cfg', (c, m) => {
-      const k = me(c), g = this.cfg; if (k === undefined || g.phase !== 'setup' && g.phase !== 'toss') return;
-      if (m?.field && k === g.chooser && FIELDS.some(f => f.id === m.field)) g.field = m.field;
+      const k = me(c), g = this.cfg; if (k === undefined || g.phase !== 'lobby' && g.phase !== 'setup' && g.phase !== 'toss') return;
+      if (g.phase !== 'lobby' && m?.field && k === g.chooser && FIELDS.some(f => f.id === m.field)) g.field = m.field;
       const both = g.caps[0] >= 0 && g.caps[1] >= 0, tm = Number(m?.team);
-      const side = both ? (k === g.caps[0] ? 0 : k === g.caps[1] ? 1 : -1) : (k === g.chooser ? Number(m?.side) : -1);
+      const side = g.phase === 'lobby' ? (k === g.caps[0] ? 0 : k === g.caps[1] ? 1 : -1) : both ? (k === g.caps[0] ? 0 : k === g.caps[1] ? 1 : -1) : (k === g.chooser ? Number(m?.side) : -1);
       if ((side === 0 || side === 1) && Number.isInteger(tm) && TEAMS[tm]) g.teams[side] = tm;
       this.pub();
     });
     this.onMessage('start', (c) => {
       const g = this.cfg, k = me(c);
-      if (g.phase === 'lobby') { if (c.sessionId !== this.order[0] || !this.order.slice(1).every(x => this.rdy.has(x) || this.disconnected.has(x))) return; g.phase = 'setup'; g.toss = null; this.lock(); this.reconf(); return; }
-      if (g.phase !== 'setup' || k !== g.chooser) return; this.startMatch(); this.pub();
+      if (g.phase === 'lobby') { if (c.sessionId !== this.order[0] || !this.order.slice(1).every(x => this.rdy.has(x) || this.disconnected.has(x))) return; g.phase = 'setup'; g.setupStep = 'teams'; g.toss = null; this.lock(); this.reconf(); return; }
+      if (g.phase !== 'setup') return;
+      if (g.setupStep === 'teams' && c.sessionId === this.order[0]) { g.setupStep = 'pitch'; this.pub(); return; }
+      if (g.setupStep === 'pitch' && k === g.chooser) { this.startMatch(); this.pub(); }
     });
     let acc = 0, snap = 0;
     this.setSimulationInterval((ms) => {
@@ -143,6 +145,7 @@ class MatchRoom extends Room {
   onJoin(c: Client, o: any) {
     joinsSinceBoot++;
     const k = this.assign(c.sessionId); this.order.push(c.sessionId);
+    if (Number.isInteger(Number(o?.team)) && TEAMS[Number(o.team)]) { const side = k < 5 ? 0 : 1, alreadyOnSide = [...this.slots.values()].some(slot => slot !== k && (slot < 5 ? 0 : 1) === side); if (!alreadyOnSide) { this.cfg.teams[side] = Number(o.team); if (this.cfg.kind === 'quick') this.quickTeamChosen[side] = true; } }
     if (this.disconnected.has(this.order[0])) this.order = [c.sessionId, ...this.order.filter(id => id !== c.sessionId)];
     let nm = String(o?.nick || 'PLAYER').replace(/[^\w ]/g, '').trim().slice(0, 14).toUpperCase() || 'PLAYER'; const base = nm; let n = 2;
     while (this.nicks.includes(nm)) nm = base.slice(0, 12) + ' ' + n++; // two players can't share a name in one match

@@ -3,9 +3,9 @@ import { moveStep } from '../shared/sim';
 let client: any;
 // net.rtt: smoothed round trip (ms). net.pp: locally predicted state of YOUR player. net.buf: recent snapshots for interpolation.
 export const net: any = { rtt: 0, pp: null, buf: [], INTERP: 100, predict: !location.search.includes('nopredict') };
-export async function connect(nick: string, code: string, how: string) {
+export async function connect(nick: string, code: string, how: string, team?: number) {
   const url = (import.meta as any).env?.VITE_SERVER_URL || `ws://${location.hostname}:2567`; client = new Client(url);
-  const o = { nick, code, kind: how === 'quick' ? 'quick' : 'private' };
+  const o = { nick, code, kind: how === 'quick' ? 'quick' : 'private', team };
   const room = how === 'quick' ? await client.joinOrCreate('match', o) : how === 'create' ? await client.create('match', o) : await client.join('match', o);
   try { sessionStorage.setItem('sfc-token', room.reconnectionToken); } catch { }
   return room;
