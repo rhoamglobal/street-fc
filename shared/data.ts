@@ -16,7 +16,7 @@ export const TEAMS = [
   { n: 'Mushin', sh: 'MUSHIN', c: 0xf26a1b, a: 0x111111, s: 0x111111, k: 0xf26a1b },
 ];
 export const FIELDS = [{ id: 'street', n: 'Street court' }, { id: 'dust', n: 'Dust pitch' }, { id: 'arena', n: 'Synthetic arena' }];
-export const GOALS = ['GOOOAL! GBAM!', 'E DON ENTER!', 'NA WAO! GOAL!', 'OYA SCORE AM!', 'SEE GOAL! KAI!', 'BOOM! BACK OF THE NET!', 'SHARP SHOT! GOAL!', 'ON GOD! GOAL!'];
+export const GOALS = ['GOOOAL! STREET FB!', 'E DON ENTER!', 'NA WAO! GOAL!', 'OYA SCORE AM!', 'SEE GOAL! KAI!', 'BOOM! BACK OF THE NET!', 'SHARP SHOT! GOAL!', 'ON GOD! GOAL!'];
 export const FOULS = ['FOUL! NO BE SO!', 'AH AH! WHY YOU KICK AM?', 'REF, YOU DEY SEE?!', 'WAHALA! FOUL!', 'ABEG! FOUL PLAY!', 'KAI! THAT ONE HURT!'];
 export const PENS = ['PENALTY! NA SO?', 'SPOT KICK! OYA!', 'E DON CHOP PENALTY!', 'PENALTY! SOMEBODY DEY CRY!'];
 export const MISS = ['MISSED! E NO FOR YOU', 'WIDE! OGA WHY?', 'NO LUCK! TRY AGAIN', 'SAVED BY NATURE!'];
