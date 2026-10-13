@@ -146,7 +146,8 @@ export function computePose(r: any, p: any, c: any) {
   const hy = (r.headY ?? 0) + (tgt - (r.headY ?? 0)) * Math.min(1, c.dt * 9);
   const hx = cel ? -.35 : (.1 + (d < 6 ? .22 : 0)) * up - lean * .6 + slide * .5;
   r.headY = hy;
-  return { hip0, hip1, kn0, kn1, a0, a1, f0, f1, az0, az1, bodyY, tiltX, twist, roll, hy, hx, slide };
+  const sway = Math.sin(ph) * .02 * run * up;
+  return { hip0, hip1, kn0, kn1, a0, a1, f0, f1, az0, az1, bodyY, tiltX, twist, roll, hy, hx, slide, sway, run };
 }
 
 export function animRig(r: any, p: any, c: any) {

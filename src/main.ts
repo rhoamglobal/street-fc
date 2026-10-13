@@ -54,19 +54,19 @@ function buildField(id){const f=FLD[id]||FLD.street;while(env.children.length)en
  [-1,1].forEach((sd,i)=>{bx(1,id==='arena'?3:5,H*K+4,wc[i],sd*(W*K/2+3.4),id==='arena'?1.5:2.5,0);[-1,1].forEach(g=>bx(.35,4,.35,0xffffff,sd*W*K/2,2,g*GOAL*K/2));bx(.35,.35,GOAL*K+.35,0xffffff,sd*W*K/2,4,0);
   add(new THREE.Mesh(new THREE.BoxGeometry(2.6,4,GOAL*K),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.14})),sd*(W*K/2+1.3),2,0)})}
 // players: low-poly rig (swap for GLB models later)
-const SK=[0x8d5524,0x5c3a21,0x3b2314,0xa86b3c,0x6f4426];
+const SK=[0x8d5524,0x5c3a21,0x3b2314,0xa86b3c,0x6f4426,0xc68642,0x4a2c17];
 const shMat=new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.3}),shGeo=new THREE.CircleGeometry(1,16);
 function blob(sc){const m=new THREE.Mesh(shGeo,shMat);m.rotation.x=-Math.PI/2;m.position.y=.04;m.scale.set(sc,sc,1);scene.add(m);return m}
 let s=mk(),me=4,nick='KAZZ',inMenu=true;let lob:any=null,online:any=null,lastIn='',lastSend=0;
 const HAIR=[0x111111,0x1a1008,0x2b1b10,0x111111,0x3b2314],BOOTS=[0x111111,0x171d2d,0x242018,0x101820,0x252525],NUMS=[4,8,7,11,9];
 const numTex=n=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d');g.font='900 44px Impact,Arial';g.textAlign='center';g.fillStyle='#fff';g.strokeStyle='rgba(0,0,0,.5)';g.lineWidth=4;g.strokeText(n,32,50);g.fillText(n,32,50);return new THREE.CanvasTexture(c)};
-const rigs=s.ps.map((p,k)=>{const R=makeRig(k,{skin:SK[k%5],num:numTex(NUMS[p.i])});scene.add(R.g);const skid=new THREE.Mesh(new THREE.CircleGeometry(.48,14),new THREE.MeshBasicMaterial({color:0x5b4932,transparent:true,opacity:.38,depthWrite:false}));skid.rotation.x=-Math.PI/2;skid.scale.set(.85,2.4,1);skid.position.y=.055;scene.add(skid);return{...R,sh:blob(.8),skid,ph:0,ang:0,turn:0}});
+const rigs=s.ps.map((p,k)=>{const R=makeRig(k,{skin:SK[k%7],num:numTex(NUMS[p.i])});scene.add(R.g);const skid=new THREE.Mesh(new THREE.CircleGeometry(.48,14),new THREE.MeshBasicMaterial({color:0x5b4932,transparent:true,opacity:.38,depthWrite:false}));skid.rotation.x=-Math.PI/2;skid.scale.set(.85,2.4,1);skid.position.y=.055;scene.add(skid);return{...R,sh:blob(.8),skid,ph:0,ang:0,turn:0}});
 // kits: shirt colour clashes are resolved by giving the second team its away shirt
 const hex=c=>'#'+c.toString(16).padStart(6,'0'),far=(a,b)=>Math.hypot((a>>16)-(b>>16),((a>>8)&255)-((b>>8)&255),(a&255)-(b&255))>120;
 const shirts=t=>{const a=TEAMS[t[0]],b=TEAMS[t[1]];return[a.c,far(a.c,b.c)?b.c:b.a]};
 function kit(t){const sc=shirts(t);s.ps.forEach((p,k)=>{const T=TEAMS[t[p.t]],q=rigs[k].m,away=p.t&&sc[1]===T.a;q.shirt.color.setHex(sc[p.t]);q.short.color.setHex(away?T.c:T.s);q.sock.color.setHex(away?T.c:T.k);q.trim.color.setHex(far(sc[p.t],0xFF5A1F)?0xFF5A1F:0xFFFFFF)})}
 // swap the built-in players for the glb character once it has loaded (falls back silently to the built-in rig)
-function upgradeRigs(){rigs.forEach((r:any,k:number)=>{if(r.model)return;const M=makeModel(k,{skin:SK[k%5],num:numTex(NUMS[s.ps[k].i]),scaleVar:.97+(k%4)*.02});while(r.g.children.length)r.g.remove(r.g.children[0]);r.g.scale.set(1,1,1);r.g.add(M.g);r.bones=M.bones;r.rest=M.rest;r.s=M.s;r.m=M.m;r.model=true;M.m.boot.color.setHex(BOOTC[k%5])});kit(curTeams)}
+function upgradeRigs(){rigs.forEach((r:any,k:number)=>{if(r.model)return;const M=makeModel(k,{skin:SK[k%7],num:numTex(NUMS[s.ps[k].i]),scaleVar:1});while(r.g.children.length)r.g.remove(r.g.children[0]);r.g.scale.set(1,1,1);r.g.add(M.g);r.bones=M.bones;r.rest=M.rest;r.s=M.s;r.m=M.m;r.model=true;M.m.boot.color.setHex(BOOTC[k%5])});kit(curTeams)}
 if(!location.search.includes('rig=basic'))loadModel('/models/player.glb').then(()=>{try{upgradeRigs()}catch(e){console.warn('player model failed, using built-in players',e)}}).catch(e=>console.warn('player model not loaded',e));
 function board(t){const sc=shirts(t),lum=c=>(c>>16)*.3+((c>>8)&255)*.59+(c&255)*.11;[['nm',0],['nr',1]].forEach(([id,i])=>{const e=$(id);e.textContent=TEAMS[t[i]].sh;e.style.background=hex(sc[i]);e.style.color=lum(sc[i])>150?'#101010':'#fff'})}
 let curTeams=[0,2];const look=(f,t)=>{curTeams=t;buildField(f);kit(t);board(t)};
@@ -89,11 +89,11 @@ let cx=0,cz=0,tt=0;
 function render(dt){tt+=dt;
  const cheering=!rep&&s.kind==='goal'&&s.pause>0;if(cheering||crowdCheering){crowdCheering=cheering;const M=new THREE.Matrix4();crowdRows.forEach(({im,points})=>{points.forEach(([x,y,z],i)=>{M.makeTranslation(x,y+(cheering?(Math.sin(tt*16+i*1.7)+1)*.42:0),z);im.setMatrixAt(i,M)});im.instanceMatrix.needsUpdate=true})}
  s.ps.forEach((p,k)=>{const r=rigs[k],sp=Math.hypot(p.vx,p.vy),slide=clamp(p.sl*2,0,1);r.g.visible=r.sh.visible=!p.off;r.skid.visible=!p.off&&slide>.02;r.g.position.set((p.x-W/2)*K,0,(p.y-H/2)*K);
-  let da=Math.atan2(p.fx,p.fy)-r.ang;da=Math.atan2(Math.sin(da),Math.cos(da));r.turn=da;r.ang+=da*Math.min(1,dt*14);r.g.rotation.y=r.ang;r.skid.position.set(r.g.position.x,.055,r.g.position.z);r.skid.rotation.set(-Math.PI/2,0,r.ang);(r.skid.material as THREE.MeshBasicMaterial).opacity=.38*slide;
-  r.ph+=sp*dt*.09;const run=clamp(sp/150,0,1),w=Math.sin(r.ph)*.9*run*(1-slide);const cel=!rep&&s.kind==='goal'&&s.pause>0&&p.t===s.gt;
-  (r.model?animModel:animRig)(r,p,{sp,slide,run,cel,tt,k,dt,bx:(s.ball.x-W/2)*K,bz:(s.ball.y-H/2)*K});r.g.rotation.z=p.stun>0?.5:0;r.g.position.y=-slide*.06+(cel?Math.abs(Math.sin(tt*10+k))*1.1:0);
+  let da=Math.atan2(p.fx,p.fy)-r.ang;da=Math.atan2(Math.sin(da),Math.cos(da));r.turn=da;r.ang+=da*Math.min(1,dt*10.5);r.g.rotation.y=r.ang;r.skid.position.set(r.g.position.x,.055,r.g.position.z);r.skid.rotation.set(-Math.PI/2,0,r.ang);(r.skid.material as THREE.MeshBasicMaterial).opacity=.38*slide;
+  r.ph+=dt*(3+sp*.045)*Math.min(1,sp/28);const run0=clamp(sp/150,0,1);r.runS=(r.runS??run0)+(run0-(r.runS??run0))*Math.min(1,dt*8);r.slS=(r.slS??slide)+(slide-(r.slS??slide))*Math.min(1,dt*14);const run=r.runS,w=Math.sin(r.ph)*.9*run*(1-slide);const cel=!rep&&s.kind==='goal'&&s.pause>0&&p.t===s.gt;
+  (r.model?animModel:animRig)(r,p,{sp,slide:r.slS,run,cel,tt,k,dt,bx:(s.ball.x-W/2)*K,bz:(s.ball.y-H/2)*K});r.g.rotation.z=p.stun>0?.5:0;r.g.position.y=-slide*.06+(cel?Math.abs(Math.sin(tt*10+k))*1.1:0);
   r.sh.position.x=r.g.position.x;r.sh.position.z=r.g.position.z});
- const b=s.ball,bx=(b.x-W/2)*K,bz=(b.y-H/2)*K;ballM.position.set(bx,.46+b.h*K,bz);ballM.rotation.z-=b.vx*dt*K/.46;ballM.rotation.x+=b.vy*dt*K/.46;ballSh.position.set(bx,.04,bz);ballSh.scale.setScalar(.6/(1+b.h*.02));
+ const b=s.ball;let vbx=b.x,vby=b.y;if(b.h<26){let nd=1e9,np:any=null;s.ps.forEach((q:any)=>{if(q.off)return;const d=Math.hypot(b.x-q.x,b.y-q.y);if(d<nd){nd=d;np=q}});if(np&&nd>1&&nd<46){const pull=.4*Math.min(nd,24)*(1-Math.max(0,Math.min(1,(nd-24)/22))**2*(3-2*Math.max(0,Math.min(1,(nd-24)/22))));const f=(nd-pull)/nd;vbx=np.x+(b.x-np.x)*f;vby=np.y+(b.y-np.y)*f}}const bx=(vbx-W/2)*K,bz=(vby-H/2)*K;ballM.position.set(bx,.46+b.h*K,bz);ballM.rotation.z-=b.vx*dt*K/.46;ballM.rotation.x+=b.vy*dt*K/.46;ballSh.position.set(bx,.04,bz);ballSh.scale.setScalar(.6/(1+b.h*.02));
  const mg=rigs[me].g.position;mark.position.set(mg.x,6.9+Math.sin(tt*5)*.25,mg.z);tagsUpdate();
  const k=1.2*Math.max(1,1.9/cam.aspect);const fx0=online&&!rep?mg.x:bx,fz0=online&&!rep?mg.z:bz; // online: the camera follows YOUR player, not the ball
  cx+=(clamp(fx0,-30,30)-cx)*Math.min(1,dt*(online?4:3));cz+=(fz0*(online?.7:.5)-cz)*Math.min(1,dt*3);
