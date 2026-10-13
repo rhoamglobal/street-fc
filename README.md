@@ -62,3 +62,7 @@ career stats saved on the phone (played, won, goals, man of the match, cups). Ac
 
 ## Player model
 Players use `public/models/player.glb` (Mixamo-style skeleton, ~5.3k triangles). Kit, skin tone and boot colours are tinted in a shader (`src/rigmodel.ts`) so one texture serves every team; motion is driven in code from the same pose logic as the built-in rig (`src/rig.ts`). If the model fails to load, the game falls back to the built-in players. Add `?rig=basic` to the URL to force the fallback. Confirm the licence of your generated model allows commercial use before shipping.
+
+## AI
+`shared/sim.ts` holds the team AI (`ai`), used for CPU teams, AI teammates and bots in online rooms. It plays with shape and spacing, lane-aware passing (ground, through, lob), runs in behind, jockeying defence with timed tackles, counter-press and loose-ball interception. The previous AI is kept as `aiClassic` (still used for shootouts and the penalty keeper).
+Benchmark it headless: `npx tsx tools/ai-bench.ts vs 4` (new vs old), `npx tsx tools/ai-bench.ts new 4` (new vs new), `npx tsx tools/ai-bench.ts old 4` (old vs old).

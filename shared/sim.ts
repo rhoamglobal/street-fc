@@ -102,7 +102,7 @@ export function step(s,inp,dt){
 }
 export const NOACT={mx:0,my:0,sprint:0,press:0,slide:0,call:0,pass:0,lob:0,thru:0,shoot:0,shield:0,skill:0,tackle:0};
 // AI: attackers dribble, dodge, pass to free runners and shoot; defenders press, cover and mark goal-side
-export function ai(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?0:W,ogx=p.t?W:0;
+export function aiClassic(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?0:W,ogx=p.t?W:0;
  const mates=s.ps.filter(q=>q.t===p.t&&!q.off),opps=s.ps.filter(q=>q.t!==p.t&&!q.off),car=s.own>=0?s.ps[s.own]:null;
  const dist=(a,x,y)=>Math.hypot(a.x-x,a.y-y),by=(x,y)=>mates.slice().sort((a,c)=>dist(a,x,y)-dist(c,x,y));let tx=p.hx,ty=p.hy;
  if(s.gk===k&&s.gkT>0){tx=ogx+d*14;ty=clamp(b.y,H/2-GOAL/2+8,H/2+GOAL/2-8);if(dist(p,b.x,b.y)<45){tx=b.x;ty=b.y}}
@@ -118,3 +118,179 @@ export function ai(s,k){const p=s.ps[k],b=s.ball,u={...NOACT},d=p.t?-1:1,gx=p.t?
   else{const ms=opps.filter(o=>o!==car),ordered=ms.slice().sort((a,c)=>dist(a,p.x,p.y)-dist(c,p.x,p.y)),o=ordered[0]||car;tx=o.x+(ogx-o.x)*.25;ty=o.y+(H/2-o.y)*.1}}
  else{if(by(b.x,b.y)[0]===p||(s.rcv===k&&s.rcvT>0)){tx=b.x+b.vx*.2;ty=b.y+b.vy*.2;u.sprint=dist(p,b.x,b.y)>60?1:0}else{tx=p.hx+(b.x-W/2)*.4;ty=p.hy+(b.y-H/2)*.3}}
  const dx=tx-p.x,dy=ty-p.y,dd=Math.hypot(dx,dy);if(dd>8){u.mx=dx/dd;u.my=dy/dd}return u}
+
+// =====================================================================================================
+// STREET FB team AI (FC-style): shape and spacing, passing lanes, through balls, jockeying defence,
+// timed tackles, counter-press, runs in behind. Decisions are made on a short human-like cadence (not every frame).
+// Same inputs as a human player, so it works for CPU teams, bots in online rooms and AI teammates alike.
+// =====================================================================================================
+const AIM = new WeakMap(), AIT = new WeakMap();
+const LAMB = -Math.log(.3);                                   // the ball loses 70% of its speed per second
+const sgd = (ax, ay, bx, by, px, py) => { const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy || 1, t = clamp(((px - ax) * vx + (py - ay) * vy) / l2, 0, 1); return [Math.hypot(px - (ax + vx * t), py - (ay + vy * t)), t] };
+const laneRisk = (ax, ay, bx, by, opps) => { let r = 0; for (const o of opps) { const [dd, t] = sgd(ax, ay, bx, by, o.x, o.y); if (t < .06) continue; const w = dd < 46 ? 1 - dd / 46 : 0; if (w > r) r = w } return r };
+const oppGap = (x, y, opps) => { let m = 1e9; for (const o of opps) { const d = Math.hypot(o.x - x, o.y - y); if (d < m) m = d } return m };
+const ballAt = (b, t) => { const f = (1 - Math.exp(-LAMB * t)) / LAMB; return [b.x + b.vx * f, b.y + b.vy * f] };
+function interceptPt(p, b, spd) { for (let t = .08; t < 1.9; t += .08) { const [x, y] = ballAt(b, t); if (Math.hypot(p.x - x, p.y - y) <= spd * t + R) return [x, y, t] } const [x, y] = ballAt(b, 1.9); return [x, y, 1.9] }
+const aiMem = p => { let m = AIM.get(p); if (!m) { m = { lt: null, dec: 0, pt: 0, tx: p.x, ty: p.y, mx: 0, my: 0, dir: [p.fx || 1, p.fy || 0], ownT: 0, tk: 0, call: 0, spr: 0, runT: 0, sk: .84 + ((p.i * 7 + p.t * 3) % 5) * .035, hold: 0 }; AIM.set(p, m) } return m };
+
+// Team plan: who presses, who covers, who marks whom, who chases a loose ball. Recomputed a few times per second.
+function aiPlan(s, t) {
+  let T = AIT.get(s); if (!T) { T = { plan: [null, null], at: [1e9, 1e9], own: -2, since: [-1e9, -1e9], lastTeam: -1 }; AIT.set(s, T) }
+  const own = s.own >= 0 ? s.ps[s.own] : null, ot = own ? own.t : -1;
+  if (ot !== T.lastTeam && ot >= 0) { if (T.lastTeam >= 0) T.since[ot] = s.time; T.lastTeam = ot }
+  if (T.plan[t] && Math.abs(T.at[t] - s.time) < .1) return T.plan[t];
+  const d = t ? -1 : 1, ogx = t ? W : 0, gx = t ? 0 : W, b = s.ball, ks = [], oks = [];
+  s.ps.forEach((q, k) => { if (q.off) return; (q.t === t ? ks : oks).push(k) });
+  const pl = { phase: 'loose', car: null, press: -1, cover: -1, tg: {}, chase: -1, chase2: -1, since: Math.abs(T.since[t] - s.time) };
+  const rcvK = s.own < 0 && s.rcv >= 0 && s.rcvT > 0 ? s.rcv : -1;
+  if (own && own.t === t) { pl.phase = 'att'; pl.car = s.own }
+  else if (own) { pl.phase = 'def'; pl.car = s.own }
+  else if (rcvK >= 0 && s.ps[rcvK].t === t) { pl.phase = 'att'; pl.car = rcvK }
+  else if (rcvK >= 0) { pl.phase = 'def'; pl.car = rcvK }
+  if (pl.phase === 'def') {
+    const C = s.ps[pl.car], gd = (x, y) => norm(ogx - x, H / 2 - y), prevP = T.plan[t] && T.plan[t].press;
+    const rank = ks.map(k => { const q = s.ps[k]; return [k, Math.hypot(q.x - C.x, q.y - C.y) + (q.i === 0 ? 38 : 0) + (q.stun > 0 ? 220 : 0) - (k === prevP ? 28 : 0)] }).sort((a, c) => a[1] - c[1]).map(a => a[0]);
+    pl.press = rank[0]; pl.cover = rank[1] ?? -1;
+    const atk = oks.filter(k => k !== pl.car).map(k => { const o = s.ps[k]; return [k, (1 - Math.hypot(o.x - ogx, o.y - H / 2) / W) * 1.1 + Math.min(1, oppGap(o.x, o.y, ks.map(j => s.ps[j])) / 120) * .5] }).sort((a, c) => c[1] - a[1]);
+    const left = ks.filter(k => k !== pl.press && k !== pl.cover);
+    if (pl.cover >= 0) { const th = atk[0] ? s.ps[atk[0][0]] : null, gdv = gd(C.x, C.y); pl.tg[pl.cover] = th ? { x: C.x + (th.x - C.x) * .42 + gdv[0] * 26, y: C.y + (th.y - C.y) * .42 + gdv[1] * 26 } : { x: C.x + gdv[0] * 120, y: C.y + gdv[1] * 120 } }
+    const used = new Set();
+    atk.forEach(([ok]) => { const o = s.ps[ok], g = gd(o.x, o.y); let bk = -1, bd = 1e9; left.forEach(k => { if (used.has(k)) return; const q = s.ps[k], dd = Math.hypot(q.x - (o.x + g[0] * 40), q.y - (o.y + g[1] * 40)) + (q.i === 0 ? -30 : 0); if (dd < bd) { bd = dd; bk = k } }); if (bk < 0) return; used.add(bk); const far = Math.hypot(o.x - ogx, o.y - H / 2) > 540, cx = C.x - o.x, cy = C.y - o.y, cl = Math.hypot(cx, cy) || 1;
+      pl.tg[bk] = { x: o.x + g[0] * (far ? 90 : 40) + cx / cl * 10, y: o.y + g[1] * (far ? 90 : 40) + cy / cl * 10, mark: ok } });
+    left.forEach(k => { if (used.has(k)) return; const q = s.ps[k]; pl.tg[k] = { x: clamp(q.hx + (C.x - W / 2) * .35, 60, W - 60), y: clamp(q.hy + (C.y - H / 2) * .4, 50, H - 50) } });
+    // the anchor sits between the ball and goal when the carrier is dangerous
+    const an = ks.find(k => s.ps[k].i === 0); if (an !== undefined && an !== pl.press && Math.hypot(C.x - ogx, C.y - H / 2) < 520) { const gdv = gd(C.x, C.y); pl.tg[an] = { x: C.x + gdv[0] * 135, y: clamp(C.y + gdv[1] * 135 * .6 + (H / 2 - C.y) * .15, 50, H - 50) } }
+  } else if (pl.phase === 'loose') {
+    const spd = 215, times = ks.map(k => { const q = s.ps[k], [, , tt] = interceptPt(q, b, spd); return [k, tt + (q.stun > 0 ? 1 : 0) + (q.cd > 0 ? .1 : 0)] }).sort((a, c) => a[1] - c[1]);
+    pl.chase = times[0] ? times[0][0] : -1; pl.chase2 = times[1] && times[1][1] < (times[0][1] + .35) ? times[1][0] : -1;
+  }
+  T.plan[t] = pl; T.at[t] = s.time; return pl;
+}
+
+export function ai(s, k) {
+  if (s.mode === 'shootout') return aiClassic(s, k);
+  const p = s.ps[k], b = s.ball, u = { ...NOACT }, d = p.t ? -1 : 1, gx = p.t ? 0 : W, ogx = p.t ? W : 0, m = aiMem(p);
+  const mates = s.ps.filter(q => q.t === p.t && !q.off), opps = s.ps.filter(q => q.t !== p.t && !q.off), car = s.own >= 0 ? s.ps[s.own] : null;
+  const dt = m.lt == null ? 0 : clamp(m.lt - s.time, 0, .1); m.lt = s.time; m.dec -= dt; m.pt -= dt; m.tk -= dt; m.call -= dt; m.runT -= dt;
+  const lvl = clamp(s.diff || 1, .75, 1.3), dist = (a, x, y) => Math.hypot(a.x - x, a.y - y);
+  // penalty keeper keeps the old behaviour; everybody else holds still during a penalty
+  if (s.gk === k && s.gkT > 0) return aiClassic(s, k);
+  if (s.gkT > 0 && s.own >= 0 && s.own === s.taker && s.own !== k) return u;   // everyone else waits for the penalty to be taken
+  const pl = aiPlan(s, p.t); let tx = p.x, ty = p.y, spr = 0, speed = 1;
+  const mkSafe = (x, y) => [clamp(x, R + 8, W - R - 8), clamp(y, R + 8, H - R - 8)];
+  if (car === p) {
+    // ---------------- ball carrier ----------------
+    m.ownT += dt || .016; const dg = dist(p, gx, H / 2), near = oppGap(p.x, p.y, opps);
+    let nearO = null, nd = 1e9; opps.forEach(o => { const dd = dist(o, p.x, p.y); if (dd < nd) { nd = dd; nearO = o } });
+    const pressed = near < 82, back = nearO && ((nearO.x - p.x) * d < 0);
+    if (m.dec <= 0) {
+      m.dec = (.14 + Math.random() * .12) / lvl;
+      // 1) carry direction: sample angles around the goal line, prefer open space and progress
+      let bestDir = m.dir, bsc = -1e9;
+      const gdir = norm(gx - p.x, H / 2 + (p.y < H / 2 ? 35 : -35) * (dg < 380 ? 1 : 0) - p.y);
+      for (let a = -1.15; a <= 1.16; a += .23) { const c = Math.cos(a), sn = Math.sin(a), dx = gdir[0] * c - gdir[1] * sn, dy = gdir[0] * sn + gdir[1] * c; let sc = (dx * d) * .6 + Math.abs(a) * -.08;
+        const px = p.x + dx * 130, py = p.y + dy * 130; sc += Math.min(1, oppGap(px, py, opps) / 130) * 1.1; if (py < 40 || py > H - 40) sc -= .5; if (px < 40 || px > W - 40) sc -= .5; sc += laneRisk(p.x, p.y, px, py, opps) * -.9; if (sc > bsc) { bsc = sc; bestDir = [dx, dy] } }
+      m.dir = bestDir;
+      // 2) shot value (no keepers: a clean lane to the goal is a goal)
+      const post = H / 2 + (p.y < H / 2 ? 24 : -24), blk = laneRisk(p.x, p.y, gx, H / 2, opps), ang = Math.abs(Math.atan2(H / 2 + GOAL / 2 - p.y, Math.abs(gx - p.x)) - Math.atan2(H / 2 - GOAL / 2 - p.y, Math.abs(gx - p.x)));
+      const xg = clamp(ang * 3.0, 0, 1) * clamp(1.2 - dg / 420, 0, 1) * (1 - .8 * blk);
+      // 3) pass options
+      let best = null, bv = -9;
+      mates.forEach(q => { if (q === p) return; const dd = dist(q, p.x, p.y); if (dd < 55) return; const kq = s.ps.indexOf(q), lx = q.x + q.vx * .3, ly = q.y + q.vy * .3, prog = (q.x - p.x) * d / W, open = clamp((oppGap(q.x, q.y, opps) - 28) / 85, 0, 1), risk = laneRisk(p.x, p.y, lx, ly, opps);
+        const qdg = dist(q, gx, H / 2), qxg = clamp(1.2 - qdg / 420, 0, 1) * open, called = q.cl > 0 && !q.ca ? .55 : 0, distF = dd < 95 ? -.3 : dd > 360 ? -(dd - 360) / 320 : 0, backP = prog < 0 ? (pressed ? .05 : .32) : 0;
+        let v = prog * 1.05 + open * .6 + qxg * .5 - risk * 2.1 + distF - backP + called, kind = 3;
+        // through ball: receiver already moving into space behind the line
+        const sp = Math.hypot(q.vx, q.vy), fwd = (q.vx * d) / (sp || 1);
+        if (sp > 110 && fwd > .5 && (q.x - p.x) * d > 70) { const tX = q.x + q.vx * .9, tY = q.y + q.vy * .9, r2 = laneRisk(p.x, p.y, tX, tY, opps), v2 = prog * 1.3 + .5 + qxg * .6 - r2 * 1.7 + .22 + called; if (v2 > v && r2 < .45) { v = v2; kind = 5 } }
+        // lob over a blocked lane to a free man
+        if (risk > .45 && open > .55 && dd > 150 && dd < 380 && kind === 3) { const v3 = prog * 1.0 + open * .5 + qxg * .4 - .28 + distF + called; if (v3 > v) { v = v3; kind = 4 } }
+        v += (Math.random() - .5) * .08 * (1.2 - m.sk);
+        if (v > bv) { bv = v; best = { q, kind, v } } });
+      const space = clamp(bsc, -1, 1), carryV = .32 * Math.max(0, space) + (dg < 460 ? .1 : 0) - (pressed ? .38 : 0) - (back ? .06 : 0);
+      const ownThird = Math.abs(p.x - ogx) < 230, hog = m.ownT > 3.2;
+      m.act = null;
+      if (dg < 380 && xg > .28 && (xg > .4 || near > 62 || dg < 200) && !(best && bv > .95 && xg < .45) && Math.random() < .9) { const sig = dg * .4 * (pressed ? 1.5 : 1) * (p.run ? 1.2 : 1); let aimY = post + (Math.random() + Math.random() + Math.random() - 1.5) * 2 * sig; m.act = { k: 1, pw: clamp((dg + 40) * LAMB * 1.35, 480, 900), aim: aimY } }
+      else if (best && (bv > carryV + .12 || (pressed && bv > -.12) || (hog && bv > -.25))) { m.act = { k: best.kind, to: best.q } }
+      else if (ownThird && pressed && !best) { m.act = { k: 1, pw: 520, aim: H / 2 + (p.y < H / 2 ? -150 : 150), clear: 1 } }
+      else if (nearO && nd < 78 && nd > 40 && !back && dg < 560 && p.cd <= 0 && Math.random() < .22 * m.sk && oppGap(p.x + gdir[0] * 110, p.y + gdir[1] * 110, opps.filter(o => o !== nearO)) > 80) { m.act = { k: 6 } }
+      m.sh = pressed && back && !best ? 1 : 0;
+    }
+    // movement of the carrier
+    const dir = m.dir; tx = p.x + dir[0] * 120; ty = p.y + dir[1] * 120;
+    const clearAhead = oppGap(p.x + dir[0] * 90, p.y + dir[1] * 90, opps) > 105;
+    spr = clearAhead && p.st > .22 ? 1 : 0; if (m.sh) { u.shield = 1; spr = 0 }
+    const a = m.act; m.act = null;
+    if (a) {
+      m.ownT = 0; // (reset on any action; ownT counts time since last decision window)
+      if (a.k === 1) { const aimY = a.aim, [ax, ay] = norm(gx - p.x, aimY - p.y); u.mx = ax; u.my = ay; u.shoot = Math.max(.08, a.clear ? .2 : (a.pw - 480) / 470); return u }
+      if (a.k === 3 || a.k === 4 || a.k === 5) { u.to = a.to; if (a.k === 3) u.pass = 1; else if (a.k === 4) u.lob = 1; else u.thru = 1; const [ax, ay] = norm(a.to.x - p.x, a.to.y - p.y); u.mx = ax; u.my = ay; return u }
+      if (a.k === 6) { u.skill = 1; u.mx = m.dir[0]; u.my = m.dir[1]; return u }
+    }
+    const mm = Math.hypot(dir[0], dir[1]) || 1; u.mx = dir[0] / mm; u.my = dir[1] / mm; u.sprint = spr; return u;
+  }
+  m.ownT = 0;
+  const ct = pl.tg[k];
+  if (pl.phase === 'att') {
+    const C = s.ps[pl.car], isRcv = pl.car === k;
+    if (isRcv) {                                     // pass incoming: go and meet it, show a good first touch
+      const [ix, iy] = interceptPt(p, b, 225); tx = ix; ty = iy; spr = dist(p, ix, iy) > 70 ? 1 : 0; speed = 1;
+    } else {
+      // off-ball: pick a space to attack (runs in behind, width, support angles), re-evaluated on a short timer with hysteresis
+      if (m.pt <= 0) {
+        m.pt = .3 + Math.random() * .15;
+        const bp = clamp((C.x - W / 2) * d / (W / 2), -1, 1), anchor = p.i === 0, sx = d * ((anchor ? 35 : 95) + (anchor ? 60 : 125) * Math.max(0, bp)) + (bp < 0 ? d * 40 * bp : 0);
+        const fbx = clamp(p.hx + sx, 70, W - 70), fby = clamp(p.hy + (C.y - H / 2) * .3, 50, H - 50);
+        const lineX = d > 0 ? Math.max(...opps.map(o => o.x), 0) : Math.min(...opps.map(o => o.x), W), role = [.15, .5, .5, .95, .95][p.i], isFwd = p.i >= 3;
+        const score = (cx, cy) => { cx = clamp(cx, 50, W - 50); cy = clamp(cy, 36, H - 36); const risk = laneRisk(C.x, C.y, cx, cy, opps), open = clamp((oppGap(cx, cy, opps) - 25) / 90, 0, 1), prog = (cx - C.x) * d / W;
+          let sc = (1 - risk) * 1.0 + open * .8 + prog * role * 1.25;
+          if (isFwd) { sc += clamp(1 - Math.hypot(cx - gx, cy - H / 2) / 460, 0, 1) * .75; if ((cx - lineX) * d > -45 && open > .4) sc += .3 }
+          sc -= Math.hypot(cx - fbx, cy - fby) / 310 * .95; sc -= Math.hypot(p.x - cx, p.y - cy) / 520 * .45;
+          const dc = Math.hypot(cx - C.x, cy - C.y); if (dc < 110) sc -= .45; if (dc > 430) sc -= (dc - 430) / 300; if (cy < 55 || cy > H - 55) sc -= .15;
+          mates.forEach(q => { if (q === p) return; const qm = AIM.get(q), qx = qm ? qm.tx : q.x, qy = qm ? qm.ty : q.y, dd = Math.hypot(cx - qx, cy - qy); if (dd < 95) sc -= .55 * (1 - dd / 95) });
+          return sc };
+        let bx = fbx, by = fby, bs = -1e9;
+        for (const ax of [0, 70, 140, 220]) for (const ay of [-150, -75, 0, 75, 150]) { const cx = fbx + d * ax - (anchor ? d * 60 : 0), cy = fby + ay, sc = score(cx, cy); if (sc > bs) { bs = sc; bx = cx; by = cy } }
+        if (score(m.tx, m.ty) < bs - .14) { m.tx = clamp(bx, 50, W - 50); m.ty = clamp(by, 36, H - 36); if (isFwd && (m.tx - p.x) * d > 120) m.runT = 1.1 }
+      }
+      tx = m.tx; ty = m.ty; const dd = dist(p, tx, ty);
+      spr = (m.runT > 0 || dd > 190) && p.st > .25 ? 1 : 0; speed = clamp(dd / 55, .35, 1);
+      // call for the ball when clear and ahead of play
+      if (m.call <= 0 && dist(p, C.x, C.y) < 440 && laneRisk(C.x, C.y, p.x, p.y, opps) < .2 && oppGap(p.x, p.y, opps) > 70 && (p.x - C.x) * d > -30) { u.call = 1; u.ai = 1; m.call = 1.6 + Math.random() }
+    }
+  } else if (pl.phase === 'def') {
+    const C = s.ps[pl.car], gdv = norm(ogx - C.x, H / 2 - C.y), dc = dist(p, C.x, C.y);
+    if (k === pl.press) {
+      // jockey: stay goal-side, close the gap, then time the tackle
+      const lead = .22, px = C.x + C.vx * lead, py = C.y + C.vy * lead, side = C.t === 0 ? 1 : -1;
+      if (dc > 120) { tx = px + gdv[0] * 30; ty = py + gdv[1] * 30; spr = p.st > .2 ? 1 : 0 }
+      else { const gap = 58 + (C.sh ? 8 : 0); tx = px + gdv[0] * gap; ty = py + gdv[1] * gap; speed = clamp(dist(p, tx, ty) / 38, .4, 1); spr = dc > 80 && (C.vx * C.fx + C.vy * C.fy) > 200 ? 1 : 0 }
+      if (m.tk <= 0 && p.cd <= 0 && p.stun <= 0 && dc < 2 * R + 22) {
+        m.tk = (.11 + Math.random() * .09) / lvl; const frontal = (p.fx * C.fx + p.fy * C.fy) < .35, loose = dist(C, b.x, b.y) > 34, pr = (loose ? .6 : .34) * (C.sh ? .45 : 1) * (frontal ? 1 : .55) * m.sk;
+        if (Math.random() < pr) u.tackle = 1;
+      } else if (m.tk <= 0 && p.cd <= 0 && p.stun <= 0 && dc > 62 && dc < 100 && (C.vx * -gdv[0] + C.vy * -gdv[1]) < -150 === false && Math.hypot(C.x - ogx, C.y - H / 2) < 250 && (p.fx * C.fx + p.fy * C.fy) < .15 && Math.random() < .035 * m.sk) { u.slide = 1; m.tk = .5 }
+    } else if (ct) { tx = ct.x; ty = ct.y; const dd = dist(p, tx, ty); spr = dd > 170 && p.st > .25 ? 1 : 0; speed = clamp(dd / 50, .3, 1);
+      // opportunistic tackle if the carrier runs into us
+      if (m.tk <= 0 && p.cd <= 0 && p.stun <= 0 && dc < 2 * R + 14 && Math.random() < .3) { u.tackle = 1; m.tk = .25 } }
+    // counter-press: right after losing it the nearest two close down hard
+    if (pl.since > 0 && pl.since < 1.6 && (k === pl.press || k === pl.cover) && dc < 260) { const gp = norm(C.x - p.x, C.y - p.y); tx = C.x + C.vx * .2; ty = C.y + C.vy * .2; spr = p.st > .15 ? 1 : 0; speed = 1; void gp }
+  } else {
+    // loose ball
+    const rcvK = s.rcv >= 0 && s.rcvT > 0 ? s.rcv : -1;
+    if (k === pl.chase || k === pl.chase2) { const [ix, iy] = interceptPt(p, b, 215); tx = ix; ty = iy; spr = dist(p, ix, iy) > 60 && p.st > .12 ? 1 : 0;
+      if (k === pl.chase && p.cd <= 0 && p.stun <= 0 && dist(p, b.x, b.y) < R + BR + 28 && b.h < 20 && Math.random() < .5) u.tackle = 1 }
+    else { const bp = clamp((b.x - W / 2) * d / (W / 2), -1, 1), anchor = p.i === 0; tx = p.hx + d * (bp * 90 + (anchor ? 0 : 40)) + (b.x - W / 2) * .12; ty = p.hy + (b.y - H / 2) * .35; const dd = dist(p, tx, ty); speed = clamp(dd / 60, .3, 1); spr = dd > 200 ? 1 : 0 }
+    void rcvK;
+  }
+  [tx, ty] = mkSafe(tx, ty);
+  // spacing: don't stack on a team-mate
+  let sx = 0, sy = 0; mates.forEach(q => { if (q === p) return; const dx = p.x - q.x, dy = p.y - q.y, dd = Math.hypot(dx, dy) || 1; if (dd < 62) { sx += dx / dd * (1 - dd / 62); sy += dy / dd * (1 - dd / 62) } });
+  const dx = tx - p.x, dy = ty - p.y, dd = Math.hypot(dx, dy);
+  let mx = 0, my = 0; if (dd > 7) { mx = dx / dd * speed; my = dy / dd * speed }
+  mx += sx * .5; my += sy * .5; const mg = Math.hypot(mx, my); if (mg > 1) { mx /= mg; my /= mg }
+  m.mx += (mx - m.mx) * Math.min(1, (dt || .016) * 12); m.my += (my - m.my) * Math.min(1, (dt || .016) * 12);
+  u.mx = m.mx; u.my = m.my;
+  // stamina management: don't sprint when tired, recover
+  if (p.st < .08) m.tired = true; else if (p.st > .45) m.tired = false;
+  u.sprint = spr && !m.tired ? 1 : 0;
+  return u;
+}
